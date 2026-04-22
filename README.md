@@ -8,9 +8,9 @@ Two [Model Context Protocol](https://modelcontextprotocol.io/) servers that enab
 
 ## What This Project Does
 
-**Icinga2 MCP** lets AI assistants query your monitoring infrastructure in real-time — check host/service status, schedule downtimes, acknowledge alerts, and submit passive check results.
+**Icinga2 MCP** lets AI assistants query your monitoring infrastructure in real-time: check host and service status, schedule downtimes, acknowledge alerts, and submit passive check results.
 
-**Director MCP** gives AI assistants full CRUD access to Icinga Director configuration — create hosts and services, manage templates, deploy configurations, and handle the complete Icinga object lifecycle.
+**Director MCP** gives AI assistants full CRUD access to Icinga Director configuration: create hosts and services, manage templates, deploy configurations, and handle the complete Icinga object lifecycle.
 
 Together they provide **122 tools** for complete Icinga infrastructure management through any MCP-compatible AI client (LibreChat, Cursor, Claude Desktop, etc.).
 
@@ -35,7 +35,7 @@ Together they provide **122 tools** for complete Icinga infrastructure managemen
           │                         │
    ┌──────▼─────────────────────────▼──────┐
    │          Icinga2 + Director           │
-   │     (monitoring.fritz.box)            │
+   │        (your-icinga-server)           │
    └───────────────────────────────────────┘
 ```
 
@@ -70,13 +70,13 @@ Edit `.env` with your Icinga credentials:
 
 ```ini
 # Icinga2 MCP
-ICINGA_HOST=vm-icinga.fritz.box
-ICINGA_USER=root
+ICINGA_HOST=<your-icinga-host>
+ICINGA_USER=<api-user>
 ICINGA_PASSWORD=<your-api-password>
 ICINGA_VERIFY_SSL=false
 
 # Director MCP
-DIRECTOR_BASE_URL=https://monitoring.fritz.box/director
+DIRECTOR_BASE_URL=https://<your-icinga-host>/director
 DIRECTOR_USER=<your-icingaweb2-user>
 DIRECTOR_PASSWORD=<your-icingaweb2-password>
 DIRECTOR_VERIFY_SSL=false
@@ -135,11 +135,11 @@ Add to `.cursor/mcp.json` or VS Code MCP settings:
 }
 ```
 
-## Icinga2 MCP — Tools (19)
+## Icinga2 MCP Tools (19)
 
 Runtime monitoring operations via Icinga2 REST API.
 
-### Status & Discovery
+### Status and Discovery
 | Tool | Description |
 |------|-------------|
 | `get_api_status` | API version and authentication info |
@@ -148,7 +148,7 @@ Runtime monitoring operations via Icinga2 REST API.
 | `list_timeperiods` | Configured timeperiods |
 | `list_users` | Notification users |
 
-### Hosts & Services
+### Hosts and Services
 | Tool | Description |
 |------|-------------|
 | `list_hosts` | All hosts (supports Icinga2 filter) |
@@ -178,7 +178,7 @@ Runtime monitoring operations via Icinga2 REST API.
 | `process_check_result` | Submit passive check result |
 | `list_notifications` | Notification configuration |
 
-## Director MCP — Tools (103)
+## Director MCP Tools (103)
 
 Full configuration lifecycle via Director REST API.
 
@@ -199,13 +199,13 @@ Full configuration lifecycle via Director REST API.
 `list_zones` · `get_zone` · `create_zone` · `update_zone` · `delete_zone`
 `list_endpoints` · `get_endpoint` · `create_endpoint` · `update_endpoint` · `delete_endpoint`
 
-### Templates & Sets (7 tools)
+### Templates and Sets (7 tools)
 `list_templates` · `list_service_sets` · `get_service_set` · `create_service_set` · `update_service_set` · `delete_service_set`
 
 ### Timeperiods (5 tools)
 `list_timeperiods` · `get_timeperiod` · `create_timeperiod` · `update_timeperiod` · `delete_timeperiod`
 
-### Users & Notifications (15 tools)
+### Users and Notifications (15 tools)
 `list_users` · `get_user` · `create_user` · `update_user` · `delete_user`
 `list_usergroups` · `get_usergroup` · `create_usergroup` · `update_usergroup` · `delete_usergroup`
 `list_notifications` · `get_notification` · `create_notification` · `update_notification` · `delete_notification`
@@ -220,7 +220,7 @@ Full configuration lifecycle via Director REST API.
 `list_datalists` · `get_datalist` · `create_datalist` · `update_datalist` · `delete_datalist`
 `list_datafields` · `get_datafield` · `create_datafield` · `update_datafield` · `delete_datafield`
 
-### Import & Sync (9 tools)
+### Import and Sync (9 tools)
 `list_import_sources` · `get_import_source` · `create_import_source` · `update_import_source` · `delete_import_source`
 `list_sync_rules` · `get_sync_rule` · `create_sync_rule` · `update_sync_rule` · `delete_sync_rule`
 
@@ -239,7 +239,7 @@ Ask your AI assistant: *"Show me all hosts that are currently DOWN"*
 The assistant calls `list_hosts`, filters results, and returns:
 ```json
 {
-  "name": "server01.fritz.box",
+  "name": "server01.example.com",
   "state": "DOWN",
   "last_check": "2026-04-22T23:00:00Z",
   "output": "CRITICAL - Host unreachable"
@@ -248,7 +248,7 @@ The assistant calls `list_hosts`, filters results, and returns:
 
 ### Create a new monitored host
 
-Ask: *"Add a new host called web01.fritz.box at 192.168.1.50 with ping check"*
+Ask: *"Add a new host called web01.example.com at 192.168.1.50 with ping check"*
 
 The assistant calls:
 1. `create_host` with `object_name`, `address`, `imports`
@@ -256,7 +256,7 @@ The assistant calls:
 
 ### Schedule maintenance window
 
-Ask: *"Schedule downtime for nas.fritz.box tonight from 2am to 4am"*
+Ask: *"Schedule downtime for nas.example.com tonight from 2am to 4am"*
 
 The assistant calls `add_downtime` with host, author, comment, and duration.
 
@@ -301,8 +301,8 @@ icinga-mcp/
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT. See [LICENSE](LICENSE) for details.
 
 ## Maintainer
 
-Daniel Vedovato — [GitHub](https://github.com/DanielVd) · [Gitea](https://code.danielvedovato.it/forgeadmin)
+Daniel Vedovato: [GitHub](https://github.com/DanielVd) · [Gitea](https://code.danielvedovato.it/forgeadmin)
