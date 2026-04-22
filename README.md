@@ -1,69 +1,108 @@
 # Icinga MCP Servers
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![MCP Protocol](https://img.shields.io/badge/MCP-1.0+-orange.svg)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Two MCP (Model Context Protocol) servers for integrating Icinga2 monitoring and Icinga Director configuration management with AI assistants.
+Two [Model Context Protocol](https://modelcontextprotocol.io/) servers that enable AI assistants to interact with [Icinga2](https://icinga.com/products/icinga-2/) monitoring and [Icinga Director](https://github.com/Icinga/icingaweb2-module-director) configuration management.
 
-## Overview
+## What This Project Does
 
-| Server | Purpose | Transport | Default Port |
-|--------|---------|-----------|--------------|
-| **Icinga2 MCP** | Runtime monitoring via Icinga2 REST API | Streamable HTTP | 8090 |
-| **Director MCP** | Configuration management via Director REST API | Streamable HTTP | 8091 |
+**Icinga2 MCP** lets AI assistants query your monitoring infrastructure in real-time — check host/service status, schedule downtimes, acknowledge alerts, and submit passive check results.
 
-## Quick Start
+**Director MCP** gives AI assistants full CRUD access to Icinga Director configuration — create hosts and services, manage templates, deploy configurations, and handle the complete Icinga object lifecycle.
+
+Together they provide **122 tools** for complete Icinga infrastructure management through any MCP-compatible AI client (LibreChat, Cursor, Claude Desktop, etc.).
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      AI Client (MCP)                        │
+│              (LibreChat, Cursor, Claude Desktop)             │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ streamable-http
+          ┌────────────┴────────────┐
+          │                         │
+   ┌──────▼──────┐          ┌───────▼──────┐
+   │ Icinga2 MCP │          │ Director MCP │
+   │  (19 tools) │          │ (103 tools)  │
+   │  port 8092  │          │  port 8093   │
+   └──────┬──────┘          └───────┬──────┘
+          │                         │
+          │ Icinga2 REST API        │ Director REST API
+          │ (port 5665)             │ (Icinga Web 2)
+          │                         │
+   ┌──────▼─────────────────────────▼──────┐
+   │          Icinga2 + Director           │
+   │     (monitoring.fritz.box)            │
+   └───────────────────────────────────────┘
+```
+
+## Prerequisites
+
+- Python 3.10+
+- Icinga2 with API enabled (`api` feature)
+- Icinga Director module installed
+- Icinga Web 2 user with `director/api` permission
+
+## Installation
 
 ```bash
-# Clone and setup
-git clone https://code.danielvedovato.it/daniel/icinga-mcp.git
+# Clone the repository
+git clone https://github.com/DanielVd/icinga-mcp.git
 cd icinga-mcp
+
+# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
+
+# Install package and dependencies
 pip install -e .
 
-# Configure
+# Create configuration
 cp .env.example .env
-# Edit .env with your credentials
 ```
 
 ## Configuration
 
-All settings via environment variables or `.env` file:
+Edit `.env` with your Icinga credentials:
 
-### Icinga2 MCP
+```ini
+# Icinga2 MCP
+ICINGA_HOST=vm-icinga.fritz.box
+ICINGA_USER=root
+ICINGA_PASSWORD=<your-api-password>
+ICINGA_VERIFY_SSL=false
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ICINGA_HOST` | Icinga2 API hostname | `vm-icinga.fritz.box` |
-| `ICINGA_USER` | API user | `root` |
-| `ICINGA_PASSWORD` | API password | *(required)* |
-| `ICINGA_VERIFY_SSL` | Verify SSL certificates | `false` |
+# Director MCP
+DIRECTOR_BASE_URL=https://monitoring.fritz.box/director
+DIRECTOR_USER=<your-icingaweb2-user>
+DIRECTOR_PASSWORD=<your-icingaweb2-password>
+DIRECTOR_VERIFY_SSL=false
+```
 
-### Director MCP
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DIRECTOR_BASE_URL` | Director REST API base URL | `https://monitoring.fritz.box/director` |
-| `DIRECTOR_USER` | Icinga Web 2 username | `daniel` |
-| `DIRECTOR_PASSWORD` | Icinga Web 2 password | *(required)* |
-| `DIRECTOR_VERIFY_SSL` | Verify SSL certificates | `false` |
+All settings can also be passed as environment variables.
 
 ## Running
 
 ```bash
 source .venv/bin/activate
 
-# Icinga2 MCP (port 8090)
+# Start Icinga2 MCP server (port 8092)
 python -m src.icinga2_mcp.server
 
-# Director MCP (port 8091)
+# Start Director MCP server (port 8093)
 python -m src.director_mcp.server
 ```
 
-## LibreChat Integration
+Both servers use **streamable-http** transport and bind to `0.0.0.0` by default.
 
-Add to `librechat.yaml`:
+## Integration
+
+### LibreChat
+
+Add to your `librechat.yaml`:
 
 ```yaml
 mcpSettings:
@@ -73,180 +112,197 @@ mcpSettings:
 mcpServers:
   icinga2-mcp:
     type: streamable-http
-    url: http://<host>:8090/mcp
+    url: http://<host>:8092/mcp
   director-mcp:
     type: streamable-http
-    url: http://<host>:8091/mcp
+    url: http://<host>:8093/mcp
 ```
 
-## Icinga2 MCP Tools (19)
+### Cursor / VS Code
 
-### Status
+Add to `.cursor/mcp.json` or VS Code MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "icinga2": {
+      "url": "http://localhost:8092/mcp"
+    },
+    "director": {
+      "url": "http://localhost:8093/mcp"
+    }
+  }
+}
+```
+
+## Icinga2 MCP — Tools (19)
+
+Runtime monitoring operations via Icinga2 REST API.
+
+### Status & Discovery
 | Tool | Description |
 |------|-------------|
-| `get_api_status` | API status and version info |
-| `get_icinga_application_status` | Checks, notifications, uptime |
+| `get_api_status` | API version and authentication info |
+| `get_icinga_application_status` | System uptime, check rates, problem counts |
+| `list_check_commands` | Available check commands |
+| `list_timeperiods` | Configured timeperiods |
+| `list_users` | Notification users |
 
-### Hosts
+### Hosts & Services
 | Tool | Description |
 |------|-------------|
-| `list_hosts` | List all monitored hosts (optional filter) |
-| `get_host` | Detailed host information |
-
-### Services
-| Tool | Description |
-|------|-------------|
-| `list_services` | List all services (filter by host or expression) |
-| `get_service` | Detailed service information |
+| `list_hosts` | All hosts (supports Icinga2 filter) |
+| `get_host` | Full host details with state and last check |
+| `list_services` | All services (filter by host or expression) |
+| `get_service` | Full service details with output and perfdata |
 
 ### Groups
 | Tool | Description |
 |------|-------------|
-| `list_hostgroups` | List all hostgroups |
-| `list_servicegroups` | List all servicegroups |
+| `list_hostgroups` | Hostgroup membership |
+| `list_servicegroups` | Servicegroup membership |
 
-### Downtimes
+### Incident Management
 | Tool | Description |
 |------|-------------|
-| `list_downtimes` | List active downtimes |
-| `add_downtime` | Schedule host or service downtime |
-| `remove_downtime` | Remove existing downtime |
-
-### Acknowledgements
-| Tool | Description |
-|------|-------------|
-| `add_acknowledgement` | Acknowledge problem on host/service |
+| `list_downtimes` | Active downtimes |
+| `add_downtime` | Schedule downtime (host or service) |
+| `remove_downtime` | Cancel downtime |
+| `add_acknowledgement` | Acknowledge a problem |
 | `remove_acknowledgement` | Remove acknowledgement |
 
 ### Operations
 | Tool | Description |
 |------|-------------|
-| `reschedule_check` | Force immediate check execution |
+| `reschedule_check` | Force immediate check |
 | `process_check_result` | Submit passive check result |
+| `list_notifications` | Notification configuration |
 
-### Reference
-| Tool | Description |
-|------|-------------|
-| `list_check_commands` | List available check commands |
-| `list_timeperiods` | List configured timeperiods |
-| `list_users` | List configured users |
-| `list_notifications` | List notification objects |
+## Director MCP — Tools (103)
 
-## Director MCP Tools (103)
+Full configuration lifecycle via Director REST API.
 
-### Hosts
-| Tool | Description |
-|------|-------------|
-| `list_hosts` | List all hosts |
-| `get_host` | Get host with resolved properties and services |
-| `create_host` | Create new host |
-| `update_host` | Modify existing host |
-| `delete_host` | Remove host |
-| `get_host_ticket` | Get agent ticket for host |
+### Hosts (6 tools)
+`list_hosts` · `get_host` · `create_host` · `update_host` · `delete_host` · `get_host_ticket`
 
-### Services
-| Tool | Description |
-|------|-------------|
-| `list_services` | List all services |
-| `get_service` | Get service details |
-| `create_service` | Create new service |
-| `update_service` | Modify existing service |
-| `delete_service` | Remove service |
-| `list_service_apply_rules` | List service apply rules |
+### Services (6 tools)
+`list_services` · `get_service` · `create_service` · `update_service` · `delete_service` · `list_service_apply_rules`
 
-### Groups
-| Tool | Description |
-|------|-------------|
-| `list_hostgroups` / `get_hostgroup` | List/get hostgroups |
-| `create_hostgroup` / `update_hostgroup` / `delete_hostgroup` | Manage hostgroups |
-| `list_servicegroups` / `get_servicegroup` | List/get servicegroups |
-| `create_servicegroup` / `update_servicegroup` / `delete_servicegroup` | Manage servicegroups |
+### Groups (12 tools)
+`list_hostgroups` · `get_hostgroup` · `create_hostgroup` · `update_hostgroup` · `delete_hostgroup`
+`list_servicegroups` · `get_servicegroup` · `create_servicegroup` · `update_servicegroup` · `delete_servicegroup`
 
-### Commands
-| Tool | Description |
-|------|-------------|
-| `list_commands` / `get_command` | List/get commands |
-| `create_command` / `update_command` / `delete_command` | Manage commands |
+### Commands (5 tools)
+`list_commands` · `get_command` · `create_command` · `update_command` · `delete_command`
 
-### Infrastructure
-| Tool | Description |
-|------|-------------|
-| `list_zones` / `get_zone` | List/get zones |
-| `create_zone` / `update_zone` / `delete_zone` | Manage zones |
-| `list_endpoints` / `get_endpoint` | List/get endpoints |
-| `create_endpoint` / `update_endpoint` / `delete_endpoint` | Manage endpoints |
+### Infrastructure (12 tools)
+`list_zones` · `get_zone` · `create_zone` · `update_zone` · `delete_zone`
+`list_endpoints` · `get_endpoint` · `create_endpoint` · `update_endpoint` · `delete_endpoint`
 
-### Templates & Sets
-| Tool | Description |
-|------|-------------|
-| `list_templates` | List host or service templates |
-| `list_service_sets` / `get_service_set` | List/get service sets |
-| `create_service_set` / `update_service_set` / `delete_service_set` | Manage service sets |
+### Templates & Sets (7 tools)
+`list_templates` · `list_service_sets` · `get_service_set` · `create_service_set` · `update_service_set` · `delete_service_set`
 
-### Timeperiods
-| Tool | Description |
-|------|-------------|
-| `list_timeperiods` / `get_timeperiod` | List/get timeperiods |
-| `create_timeperiod` / `update_timeperiod` / `delete_timeperiod` | Manage timeperiods |
+### Timeperiods (5 tools)
+`list_timeperiods` · `get_timeperiod` · `create_timeperiod` · `update_timeperiod` · `delete_timeperiod`
 
-### Users & Notifications
-| Tool | Description |
-|------|-------------|
-| `list_users` / `get_user` | List/get users |
-| `create_user` / `update_user` / `delete_user` | Manage users |
-| `list_usergroups` / `get_usergroup` | List/get usergroups |
-| `create_usergroup` / `update_usergroup` / `delete_usergroup` | Manage usergroups |
-| `list_notifications` / `get_notification` | List/get notifications |
-| `create_notification` / `update_notification` / `delete_notification` | Manage notifications |
+### Users & Notifications (15 tools)
+`list_users` · `get_user` · `create_user` · `update_user` · `delete_user`
+`list_usergroups` · `get_usergroup` · `create_usergroup` · `update_usergroup` · `delete_usergroup`
+`list_notifications` · `get_notification` · `create_notification` · `update_notification` · `delete_notification`
 
-### Scheduled Downtimes
-| Tool | Description |
-|------|-------------|
-| `list_downtimes` / `get_downtime` | List/get scheduled downtimes |
-| `create_downtime` / `update_downtime` / `delete_downtime` | Manage scheduled downtimes |
+### Scheduled Downtimes (5 tools)
+`list_downtimes` · `get_downtime` · `create_downtime` · `update_downtime` · `delete_downtime`
 
-### Deployment
-| Tool | Description |
-|------|-------------|
-| `deploy_pending_changes` | Deploy configuration to Icinga2 |
-| `get_deployment_status` | Get deployment status (active/failed/undeployed) |
-| `get_activity_log` | View recent configuration changes |
+### Deployment (3 tools)
+`deploy_pending_changes` · `get_deployment_status` · `get_activity_log`
 
-### Data Management
-| Tool | Description |
-|------|-------------|
-| `list_datalists` / `get_datalist` | List/get data lists |
-| `create_datalist` / `update_datalist` / `delete_datalist` | Manage data lists |
-| `list_datafields` / `get_datafield` | List/get data fields |
-| `create_datafield` / `update_datafield` / `delete_datafield` | Manage data fields |
+### Data Management (9 tools)
+`list_datalists` · `get_datalist` · `create_datalist` · `update_datalist` · `delete_datalist`
+`list_datafields` · `get_datafield` · `create_datafield` · `update_datafield` · `delete_datafield`
 
-### Import & Sync
-| Tool | Description |
-|------|-------------|
-| `list_import_sources` / `get_import_source` | List/get import sources |
-| `create_import_source` / `update_import_source` / `delete_import_source` | Manage import sources |
-| `list_sync_rules` / `get_sync_rule` | List/get sync rules |
-| `create_sync_rule` / `update_sync_rule` / `delete_sync_rule` | Manage sync rules |
+### Import & Sync (9 tools)
+`list_import_sources` · `get_import_source` · `create_import_source` · `update_import_source` · `delete_import_source`
+`list_sync_rules` · `get_sync_rule` · `create_sync_rule` · `update_sync_rule` · `delete_sync_rule`
 
-### Jobs
-| Tool | Description |
-|------|-------------|
-| `list_jobs` / `get_job` | List/get jobs |
-| `create_job` / `update_job` / `delete_job` | Manage jobs |
-| `run_job` | Execute a job |
+### Jobs (6 tools)
+`list_jobs` · `get_job` · `create_job` · `update_job` · `delete_job` · `run_job`
 
-### Branches
-| Tool | Description |
-|------|-------------|
-| `list_branches` / `get_branch` | List/get branches |
-| `create_branch` / `update_branch` / `delete_branch` | Manage branches |
-| `merge_branch` | Merge branch into main config |
+### Branches (6 tools)
+`list_branches` · `get_branch` · `create_branch` · `update_branch` · `delete_branch` · `merge_branch`
+
+## Example Usage
+
+### Check all hosts and their status
+
+Ask your AI assistant: *"Show me all hosts that are currently DOWN"*
+
+The assistant calls `list_hosts`, filters results, and returns:
+```json
+{
+  "name": "server01.fritz.box",
+  "state": "DOWN",
+  "last_check": "2026-04-22T23:00:00Z",
+  "output": "CRITICAL - Host unreachable"
+}
+```
+
+### Create a new monitored host
+
+Ask: *"Add a new host called web01.fritz.box at 192.168.1.50 with ping check"*
+
+The assistant calls:
+1. `create_host` with `object_name`, `address`, `imports`
+2. `deploy_pending_changes` to push config to Icinga2
+
+### Schedule maintenance window
+
+Ask: *"Schedule downtime for nas.fritz.box tonight from 2am to 4am"*
+
+The assistant calls `add_downtime` with host, author, comment, and duration.
+
+### Deploy pending configuration changes
+
+Ask: *"Are there any pending changes in Director? Deploy them if so."*
+
+The assistant calls `get_deployment_status`, then `deploy_pending_changes`.
 
 ## API References
 
-- [Icinga2 REST API Documentation](https://icinga.com/docs/icinga2/latest/doc/12-icinga2-api/)
-- [Icinga Director REST API Documentation](https://github.com/Icinga/icingaweb2-module-director/blob/master/doc/70-REST-API.md)
+- [Icinga2 REST API](https://icinga.com/docs/icinga2/latest/doc/12-icinga2-api/)
+- [Icinga Director REST API](https://github.com/Icinga/icingaweb2-module-director/blob/master/doc/70-REST-API.md)
+- [Model Context Protocol](https://modelcontextprotocol.io/introduction)
+
+## Project Structure
+
+```
+icinga-mcp/
+├── src/
+│   ├── icinga2_mcp/
+│   │   ├── __init__.py
+│   │   ├── client.py          # Icinga2 REST API client
+│   │   └── server.py          # MCP server (19 tools)
+│   └── director_mcp/
+│       ├── __init__.py
+│       ├── client.py          # Director REST API client
+│       └── server.py          # MCP server (103 tools)
+├── .env.example               # Environment template
+├── .gitignore
+├── pyproject.toml
+└── README.md
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.
+
+## Maintainer
+
+Daniel Vedovato — [GitHub](https://github.com/DanielVd) · [Gitea](https://code.danielvedovato.it/forgeadmin)
