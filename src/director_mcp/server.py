@@ -11,7 +11,7 @@ DIRECTOR_USER = os.getenv("DIRECTOR_USER", "daniel")
 DIRECTOR_PASSWORD = os.getenv("DIRECTOR_PASSWORD", "Camillo50317!")
 DIRECTOR_VERIFY_SSL = os.getenv("DIRECTOR_VERIFY_SSL", "false").lower() == "true"
 
-mcp = FastMCP("director-mcp", host="0.0.0.0", port=8091)
+mcp = FastMCP("director-mcp", host="0.0.0.0", port=8093)
 
 
 def get_client() -> DirectorClient:

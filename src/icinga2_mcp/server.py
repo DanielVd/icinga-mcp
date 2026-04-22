@@ -11,7 +11,7 @@ ICINGA_USER = os.getenv("ICINGA_USER", "root")
 ICINGA_PASSWORD = os.getenv("ICINGA_PASSWORD", "f18de2c07d6c2b66")
 ICINGA_VERIFY_SSL = os.getenv("ICINGA_VERIFY_SSL", "false").lower() == "true"
 
-mcp = FastMCP("icinga2-mcp", host="0.0.0.0", port=8090)
+mcp = FastMCP("icinga2-mcp", host="0.0.0.0", port=8092)
 
 
 def get_client() -> Icinga2Client:
