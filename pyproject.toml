@@ -1,0 +1,20 @@
+[project]
+name = "icinga-mcp"
+version = "0.1.0"
+description = "MCP servers for Icinga2 and Icinga Director"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+    "requests>=2.31.0",
+    "pymysql>=1.1.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+]
+
+[project.scripts]
+icinga2-mcp = "icinga2_mcp.server:main"
+director-mcp = "director_mcp.server:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
