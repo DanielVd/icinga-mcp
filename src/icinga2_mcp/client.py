@@ -83,7 +83,7 @@ class Icinga2Client:
         """List all downtimes, optionally filtered by host."""
         params = {}
         if host:
-            params["filter"] = f'host.name=={host!r}'
+            params["filter"] = f'host.name=="{host}"'
         result = self._get("objects/downtimes", params)
         return result.get("results", [])
 
@@ -92,7 +92,7 @@ class Icinga2Client:
         """Add downtime for host or service."""
         data = {
             "type": "Downtime",
-            "filter": f"host.name=={host!r}" + (f'&& service.name=={service!r}' if service else ""),
+            "filter": f'host.name=="{host}"' + (f' && service.name=="{service}"' if service else ""),
             "author": author,
             "comment": comment,
             "duration": duration,
@@ -104,7 +104,7 @@ class Icinga2Client:
         """Remove downtime by name."""
         data = {
             "type": "Downtime",
-            "filter": f"name=={downtime_name!r}",
+            "filter": f'name=="{downtime_name}"',
             "author": "mcp-server",
             "comment": "Removed via MCP",
         }
@@ -116,7 +116,7 @@ class Icinga2Client:
         """Add acknowledgement for host or service."""
         data = {
             "type": "Service" if service else "Host",
-            "filter": f"host.name=={host!r}" + (f'&& name=={service!r}' if service else ""),
+            "filter": f'host.name=="{host}"' + (f' && name=="{service}"' if service else ""),
             "author": author,
             "comment": comment,
             "sticky": sticky,
@@ -129,7 +129,7 @@ class Icinga2Client:
         """Remove acknowledgement for host or service."""
         data = {
             "type": "Service" if service else "Host",
-            "filter": f"host.name=={host!r}" + (f'&& name=={service!r}' if service else ""),
+            "filter": f'host.name=="{host}"' + (f' && name=="{service}"' if service else ""),
             "author": "mcp-server",
             "comment": "Removed via MCP",
         }
@@ -139,9 +139,9 @@ class Icinga2Client:
                          force: bool = True) -> dict:
         """Reschedule check for host or service."""
         obj_type = "Service" if service else "Host"
-        filter_str = f"host.name=={host!r}"
+        filter_str = f'host.name=="{host}"'
         if service:
-            filter_str += f'&& name=={service!r}'
+            filter_str += f' && name=="{service}"'
         data = {
             "type": obj_type,
             "filter": filter_str,
@@ -173,7 +173,7 @@ class Icinga2Client:
         """List all notifications."""
         params = {}
         if host:
-            params["filter"] = f"host.name=={host!r}"
+            params["filter"] = f'host.name=="{host}"'
         result = self._get("objects/notifications", params)
         return result.get("results", [])
 
