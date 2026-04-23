@@ -116,7 +116,7 @@ class Icinga2Client:
         """Add acknowledgement for host or service."""
         data = {
             "type": "Service" if service else "Host",
-            "filter": f'host.name=="{host}"' + (f' && name=="{service}"' if service else ""),
+            "filter": f'host.name=="{host}"' + (f' && service.name=="{service}"' if service else ""),
             "author": author,
             "comment": comment,
             "sticky": sticky,
@@ -129,7 +129,7 @@ class Icinga2Client:
         """Remove acknowledgement for host or service."""
         data = {
             "type": "Service" if service else "Host",
-            "filter": f'host.name=="{host}"' + (f' && name=="{service}"' if service else ""),
+            "filter": f'host.name=="{host}"' + (f' && service.name=="{service}"' if service else ""),
             "author": "mcp-server",
             "comment": "Removed via MCP",
         }
@@ -141,7 +141,7 @@ class Icinga2Client:
         obj_type = "Service" if service else "Host"
         filter_str = f'host.name=="{host}"'
         if service:
-            filter_str += f' && name=="{service}"'
+            filter_str += f' && service.name=="{service}"'
         data = {
             "type": obj_type,
             "filter": filter_str,
