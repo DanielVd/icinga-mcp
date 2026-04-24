@@ -1,10 +1,17 @@
 """Icinga2 API client."""
 
-import requests
-from urllib3.exceptions import InsecureRequestWarning
+import os
 from typing import Optional
 
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.exceptions import InsecureRequestWarning
+
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+DEFAULT_TIMEOUT = float(os.getenv("ICINGA_REQUEST_TIMEOUT", "30"))
+DEFAULT_POOL_CONNECTIONS = int(os.getenv("ICINGA_POOL_CONNECTIONS", "20"))
+DEFAULT_POOL_MAXSIZE = int(os.getenv("ICINGA_POOL_MAXSIZE", "50"))
 
 
 class Icinga2Client:
@@ -14,6 +21,7 @@ class Icinga2Client:
         self.base_url = f"https://{host}:5665/v1"
         self.auth = (user, password)
         self.verify = verify_ssl
+        self.timeout = DEFAULT_TIMEOUT
         self.session = requests.Session()
         self.session.auth = self.auth
         self.session.verify = self.verify
@@ -21,14 +29,20 @@ class Icinga2Client:
             "Accept": "application/json",
             "Content-Type": "application/json",
         })
+        adapter = HTTPAdapter(
+            pool_connections=DEFAULT_POOL_CONNECTIONS,
+            pool_maxsize=DEFAULT_POOL_MAXSIZE,
+        )
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
     def _get(self, path: str, params: Optional[dict] = None) -> dict:
-        resp = self.session.get(f"{self.base_url}/{path}", params=params)
+        resp = self.session.get(f"{self.base_url}/{path}", params=params, timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()
 
     def _post(self, path: str, data: dict) -> dict:
-        resp = self.session.post(f"{self.base_url}/{path}", json=data)
+        resp = self.session.post(f"{self.base_url}/{path}", json=data, timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()
 
@@ -40,11 +54,13 @@ class Icinga2Client:
         """Get Icinga2 status information."""
         return self._get(f"status/{type_name}")
 
-    def list_hosts(self, host_filter: Optional[str] = None) -> list:
+    def list_hosts(self, host_filter: Optional[str] = None, attrs: Optional[list[str]] = None) -> list:
         """List all hosts with optional filter."""
         params = {}
         if host_filter:
             params["filter"] = host_filter
+        if attrs:
+            params["attrs"] = attrs
         result = self._get("objects/hosts", params)
         return result.get("results", [])
 
@@ -53,11 +69,18 @@ class Icinga2Client:
         result = self._get(f"objects/hosts/{name}")
         return result.get("results", [{}])[0]
 
-    def list_services(self, host: Optional[str] = None, service_filter: Optional[str] = None) -> list:
+    def list_services(
+        self,
+        host: Optional[str] = None,
+        service_filter: Optional[str] = None,
+        attrs: Optional[list[str]] = None,
+    ) -> list:
         """List all services, optionally filtered by host."""
         params = {}
         if service_filter:
             params["filter"] = service_filter
+        if attrs:
+            params["attrs"] = attrs
         if host:
             result = self._get(f"objects/services", {"host": host, **params})
         else:
@@ -69,21 +92,25 @@ class Icinga2Client:
         result = self._get(f"objects/services/{host}/{service}")
         return result.get("results", [{}])[0]
 
-    def list_hostgroups(self) -> list:
+    def list_hostgroups(self, attrs: Optional[list[str]] = None) -> list:
         """List all hostgroups."""
-        result = self._get("objects/hostgroups")
+        params = {"attrs": attrs} if attrs else None
+        result = self._get("objects/hostgroups", params)
         return result.get("results", [])
 
-    def list_servicegroups(self) -> list:
+    def list_servicegroups(self, attrs: Optional[list[str]] = None) -> list:
         """List all servicegroups."""
-        result = self._get("objects/servicegroups")
+        params = {"attrs": attrs} if attrs else None
+        result = self._get("objects/servicegroups", params)
         return result.get("results", [])
 
-    def list_downtimes(self, host: Optional[str] = None) -> list:
+    def list_downtimes(self, host: Optional[str] = None, attrs: Optional[list[str]] = None) -> list:
         """List all downtimes, optionally filtered by host."""
         params = {}
         if host:
             params["filter"] = f'host.name=="{host}"'
+        if attrs:
+            params["attrs"] = attrs
         result = self._get("objects/downtimes", params)
         return result.get("results", [])
 
@@ -154,26 +181,31 @@ class Icinga2Client:
         result = self._get(f"objects/{obj_type}")
         return result.get("results", [])
 
-    def get_check_commands(self) -> list:
+    def get_check_commands(self, attrs: Optional[list[str]] = None) -> list:
         """List all check commands."""
-        result = self._get("objects/checkcommands")
+        params = {"attrs": attrs} if attrs else None
+        result = self._get("objects/checkcommands", params)
         return result.get("results", [])
 
-    def list_timeperiods(self) -> list:
+    def list_timeperiods(self, attrs: Optional[list[str]] = None) -> list:
         """List all timeperiods."""
-        result = self._get("objects/timeperiods")
+        params = {"attrs": attrs} if attrs else None
+        result = self._get("objects/timeperiods", params)
         return result.get("results", [])
 
-    def list_users(self) -> list:
+    def list_users(self, attrs: Optional[list[str]] = None) -> list:
         """List all users."""
-        result = self._get("objects/users")
+        params = {"attrs": attrs} if attrs else None
+        result = self._get("objects/users", params)
         return result.get("results", [])
 
-    def list_notifications(self, host: Optional[str] = None) -> list:
+    def list_notifications(self, host: Optional[str] = None, attrs: Optional[list[str]] = None) -> list:
         """List all notifications."""
         params = {}
         if host:
             params["filter"] = f'host.name=="{host}"'
+        if attrs:
+            params["attrs"] = attrs
         result = self._get("objects/notifications", params)
         return result.get("results", [])
 
