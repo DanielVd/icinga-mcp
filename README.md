@@ -90,6 +90,10 @@ DIRECTOR_POOL_MAXSIZE=50
 
 All settings can also be passed as environment variables.
 
+Security note:
+- credentials are no longer hardcoded in code
+- `ICINGA_HOST`, `ICINGA_USER`, `ICINGA_PASSWORD`, `DIRECTOR_BASE_URL`, `DIRECTOR_USER`, `DIRECTOR_PASSWORD` must be set in environment or `.env`
+
 ## Running
 
 ```bash

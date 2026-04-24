@@ -5,6 +5,7 @@ from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter
+from requests.exceptions import RequestException
 from urllib3.exceptions import InsecureRequestWarning
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -37,14 +38,25 @@ class Icinga2Client:
         self.session.mount("https://", adapter)
 
     def _get(self, path: str, params: Optional[dict] = None) -> dict:
-        resp = self.session.get(f"{self.base_url}/{path}", params=params, timeout=self.timeout)
-        resp.raise_for_status()
-        return resp.json()
+        return self._request("GET", path, params=params)
 
     def _post(self, path: str, data: dict) -> dict:
-        resp = self.session.post(f"{self.base_url}/{path}", json=data, timeout=self.timeout)
-        resp.raise_for_status()
-        return resp.json()
+        return self._request("POST", path, json=data)
+
+    def _request(self, method: str, path: str, **kwargs) -> dict:
+        try:
+            resp = self.session.request(method, f"{self.base_url}/{path}", timeout=self.timeout, **kwargs)
+            resp.raise_for_status()
+        except RequestException as exc:
+            status_code = getattr(getattr(exc, "response", None), "status_code", "request-error")
+            response_text = getattr(getattr(exc, "response", None), "text", "") or str(exc)
+            detail = response_text.strip().replace("\n", " ")[:500]
+            raise RuntimeError(f"Icinga2 API request failed for {method} {path}: {status_code} {detail}") from exc
+
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise RuntimeError(f"Icinga2 API returned invalid JSON for {method} {path}") from exc
 
     def get_api_status(self) -> dict:
         """Get Icinga2 API status and version info."""
