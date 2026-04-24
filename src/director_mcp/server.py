@@ -1,16 +1,11 @@
 """Icinga Director MCP Server."""
 
-import os
 import json
 from functools import lru_cache
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 from .client import DirectorClient
-
-DIRECTOR_BASE_URL = os.getenv("DIRECTOR_BASE_URL", "https://monitoring.fritz.box/director")
-DIRECTOR_USER = os.getenv("DIRECTOR_USER", "daniel")
-DIRECTOR_PASSWORD = os.getenv("DIRECTOR_PASSWORD", "Camillo50317!")
-DIRECTOR_VERIFY_SSL = os.getenv("DIRECTOR_VERIFY_SSL", "false").lower() == "true"
+from .settings import DirectorSettings
 
 mcp = FastMCP("director-mcp", host="0.0.0.0", port=8093)
 
@@ -51,8 +46,21 @@ def summarize_service(service: dict) -> dict:
 
 
 @lru_cache(maxsize=1)
+def get_settings() -> DirectorSettings:
+    return DirectorSettings()
+
+
+@lru_cache(maxsize=1)
 def get_client() -> DirectorClient:
-    return DirectorClient(DIRECTOR_BASE_URL, DIRECTOR_USER, DIRECTOR_PASSWORD, DIRECTOR_VERIFY_SSL)
+    settings = get_settings()
+    return DirectorClient(settings.base_url, settings.user, settings.password, settings.verify_ssl)
+
+
+def parse_json_field(field_name: str, raw_value: str) -> dict:
+    try:
+        return json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{field_name} must be valid JSON: {exc.msg}") from exc
 
 
 # === HOSTS ===
@@ -106,7 +114,7 @@ def create_host(object_name: str = Field(description="Host name"),
     if imports:
         host_data["imports"] = [i.strip() for i in imports.split(",")]
     if vars_json:
-        host_data["vars"] = json.loads(vars_json)
+        host_data["vars"] = parse_json_field("vars_json", vars_json)
 
     result = client.create_host(host_data)
     return json_response(result)
@@ -128,7 +136,7 @@ def update_host(host_name: str = Field(description="Host name to update"),
     if imports:
         host_data["imports"] = [i.strip() for i in imports.split(",")]
     if vars_json:
-        host_data["vars"] = json.loads(vars_json)
+        host_data["vars"] = parse_json_field("vars_json", vars_json)
 
     result = client.update_host(host_name, host_data)
     return json_response(result)
@@ -202,7 +210,7 @@ def create_service(object_name: str = Field(description="Service name"),
     if imports:
         service_data["imports"] = [i.strip() for i in imports.split(",")]
     if vars_json:
-        service_data["vars"] = json.loads(vars_json)
+        service_data["vars"] = parse_json_field("vars_json", vars_json)
 
     host_param = host_name if host_name else None
     result = client.create_service(service_data, host_param)
@@ -223,7 +231,7 @@ def update_service(service_name: str = Field(description="Service name to update
     if display_name:
         service_data["display_name"] = display_name
     if vars_json:
-        service_data["vars"] = json.loads(vars_json)
+        service_data["vars"] = parse_json_field("vars_json", vars_json)
 
     host_param = host_name if host_name else None
     result = client.update_service(service_name, service_data, host_param)
@@ -1245,6 +1253,7 @@ def merge_branch(branch_name: str = Field(description="Branch name")) -> str:
 
 
 def main():
+    get_settings()
     mcp.run(transport="streamable-http")
 
 

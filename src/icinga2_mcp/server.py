@@ -1,16 +1,11 @@
 """Icinga2 MCP Server."""
 
-import os
 import json
 from functools import lru_cache
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 from .client import Icinga2Client
-
-ICINGA_HOST = os.getenv("ICINGA_HOST", "vm-icinga.fritz.box")
-ICINGA_USER = os.getenv("ICINGA_USER", "root")
-ICINGA_PASSWORD = os.getenv("ICINGA_PASSWORD", "f18de2c07d6c2b66")
-ICINGA_VERIFY_SSL = os.getenv("ICINGA_VERIFY_SSL", "false").lower() == "true"
+from .settings import Icinga2Settings
 
 mcp = FastMCP("icinga2-mcp", host="0.0.0.0", port=8092)
 
@@ -64,8 +59,14 @@ def json_response(data: object) -> str:
 
 
 @lru_cache(maxsize=1)
+def get_settings() -> Icinga2Settings:
+    return Icinga2Settings()
+
+
+@lru_cache(maxsize=1)
 def get_client() -> Icinga2Client:
-    return Icinga2Client(ICINGA_HOST, ICINGA_USER, ICINGA_PASSWORD, ICINGA_VERIFY_SSL)
+    settings = get_settings()
+    return Icinga2Client(settings.host, settings.user, settings.password, settings.verify_ssl)
 
 
 @mcp.tool()
@@ -352,6 +353,7 @@ def process_check_result(host: str = Field(description="Host name"),
 
 
 def main():
+    get_settings()
     mcp.run(transport="streamable-http")
 
 
