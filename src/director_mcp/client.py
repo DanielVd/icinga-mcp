@@ -1,8 +1,16 @@
 """Icinga Director REST API client."""
 
-import requests
-from typing import Optional
+import os
 from datetime import datetime
+from typing import Optional
+
+import requests
+from requests.adapters import HTTPAdapter
+
+
+DEFAULT_TIMEOUT = float(os.getenv("DIRECTOR_REQUEST_TIMEOUT", "30"))
+DEFAULT_POOL_CONNECTIONS = int(os.getenv("DIRECTOR_POOL_CONNECTIONS", "20"))
+DEFAULT_POOL_MAXSIZE = int(os.getenv("DIRECTOR_POOL_MAXSIZE", "50"))
 
 
 class DirectorClient:
@@ -13,6 +21,7 @@ class DirectorClient:
         self.user = user
         self.password = password
         self.verify_ssl = verify_ssl
+        self.timeout = DEFAULT_TIMEOUT
         self.session = requests.Session()
         self.session.auth = (user, password)
         self.session.verify = verify_ssl
@@ -20,24 +29,30 @@ class DirectorClient:
             "Accept": "application/json",
             "Content-Type": "application/json",
         })
+        adapter = HTTPAdapter(
+            pool_connections=DEFAULT_POOL_CONNECTIONS,
+            pool_maxsize=DEFAULT_POOL_MAXSIZE,
+        )
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
     def _get(self, path: str, params: Optional[dict] = None) -> dict:
-        resp = self.session.get(f"{self.base_url}/{path}", params=params)
+        resp = self.session.get(f"{self.base_url}/{path}", params=params, timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()
 
     def _post(self, path: str, data: dict, params: Optional[dict] = None) -> dict:
-        resp = self.session.post(f"{self.base_url}/{path}", json=data, params=params)
+        resp = self.session.post(f"{self.base_url}/{path}", json=data, params=params, timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()
 
     def _put(self, path: str, data: dict, params: Optional[dict] = None) -> dict:
-        resp = self.session.put(f"{self.base_url}/{path}", json=data, params=params)
+        resp = self.session.put(f"{self.base_url}/{path}", json=data, params=params, timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()
 
     def _delete(self, path: str, params: Optional[dict] = None) -> dict:
-        resp = self.session.delete(f"{self.base_url}/{path}", params=params)
+        resp = self.session.delete(f"{self.base_url}/{path}", params=params, timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()
 

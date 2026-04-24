@@ -2,6 +2,7 @@
 
 import os
 import json
+from functools import lru_cache
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 from .client import DirectorClient
@@ -14,6 +15,42 @@ DIRECTOR_VERIFY_SSL = os.getenv("DIRECTOR_VERIFY_SSL", "false").lower() == "true
 mcp = FastMCP("director-mcp", host="0.0.0.0", port=8093)
 
 
+def json_response(data: object) -> str:
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+def paginate(items: list, limit: int, offset: int) -> list:
+    if offset < 0:
+        offset = 0
+    if limit <= 0:
+        return items[offset:]
+    return items[offset:offset + limit]
+
+
+def summarize_host(host: dict) -> dict:
+    return {
+        "object_name": host.get("object_name"),
+        "object_type": host.get("object_type"),
+        "address": host.get("address"),
+        "display_name": host.get("display_name"),
+        "imports": host.get("imports", []),
+        "disabled": host.get("disabled"),
+    }
+
+
+def summarize_service(service: dict) -> dict:
+    return {
+        "object_name": service.get("object_name"),
+        "object_type": service.get("object_type"),
+        "host": service.get("host"),
+        "display_name": service.get("display_name"),
+        "check_command": service.get("check_command"),
+        "imports": service.get("imports", []),
+        "disabled": service.get("disabled"),
+    }
+
+
+@lru_cache(maxsize=1)
 def get_client() -> DirectorClient:
     return DirectorClient(DIRECTOR_BASE_URL, DIRECTOR_USER, DIRECTOR_PASSWORD, DIRECTOR_VERIFY_SSL)
 
@@ -21,11 +58,22 @@ def get_client() -> DirectorClient:
 # === HOSTS ===
 
 @mcp.tool()
-def list_hosts() -> str:
-    """List all hosts configured in Icinga Director."""
+def list_hosts(limit: int = Field(default=0, description="Max returned hosts, 0 = all"),
+               offset: int = Field(default=0, description="Skip first N hosts"),
+               summary: bool = Field(default=False, description="Return compact host summary")) -> str:
+    """List hosts configured in Icinga Director. Use limit/offset for large inventories."""
     client = get_client()
     hosts = client.list_hosts()
-    return json.dumps(hosts, indent=2)
+    page = paginate(hosts, limit, offset)
+    if summary:
+        page = [summarize_host(host) for host in page]
+    return json_response({
+        "total": len(hosts),
+        "count": len(page),
+        "limit": limit,
+        "offset": offset,
+        "results": page,
+    })
 
 
 @mcp.tool()
@@ -35,7 +83,7 @@ def get_host(host_name: str = Field(description="Host name"),
     """Get detailed information about a single host from Director."""
     client = get_client()
     host = client.get_host(host_name, resolved, with_services)
-    return json.dumps(host, indent=2)
+    return json_response(host)
 
 
 @mcp.tool()
@@ -61,7 +109,7 @@ def create_host(object_name: str = Field(description="Host name"),
         host_data["vars"] = json.loads(vars_json)
 
     result = client.create_host(host_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -83,7 +131,7 @@ def update_host(host_name: str = Field(description="Host name to update"),
         host_data["vars"] = json.loads(vars_json)
 
     result = client.update_host(host_name, host_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -91,7 +139,7 @@ def delete_host(host_name: str = Field(description="Host name to delete")) -> st
     """Delete a host from Icinga Director."""
     client = get_client()
     result = client.delete_host(host_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -99,17 +147,28 @@ def get_host_ticket(host_name: str = Field(description="Host name")) -> str:
     """Get agent ticket for a host."""
     client = get_client()
     result = client.get_host_ticket(host_name)
-    return json.dumps({"ticket": result}, indent=2)
+    return json_response({"ticket": result})
 
 
 # === SERVICES ===
 
 @mcp.tool()
-def list_services() -> str:
-    """List all services configured in Icinga Director."""
+def list_services(limit: int = Field(default=0, description="Max returned services, 0 = all"),
+                  offset: int = Field(default=0, description="Skip first N services"),
+                  summary: bool = Field(default=False, description="Return compact service summary")) -> str:
+    """List services configured in Icinga Director. Use limit/offset for large inventories."""
     client = get_client()
     services = client.list_services()
-    return json.dumps(services, indent=2)
+    page = paginate(services, limit, offset)
+    if summary:
+        page = [summarize_service(service) for service in page]
+    return json_response({
+        "total": len(services),
+        "count": len(page),
+        "limit": limit,
+        "offset": offset,
+        "results": page,
+    })
 
 
 @mcp.tool()
@@ -119,7 +178,7 @@ def get_service(service_name: str = Field(description="Service name"),
     client = get_client()
     host_param = host_name if host_name else None
     service = client.get_service(service_name, host_param)
-    return json.dumps(service, indent=2)
+    return json_response(service)
 
 
 @mcp.tool()
@@ -147,7 +206,7 @@ def create_service(object_name: str = Field(description="Service name"),
 
     host_param = host_name if host_name else None
     result = client.create_service(service_data, host_param)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -168,7 +227,7 @@ def update_service(service_name: str = Field(description="Service name to update
 
     host_param = host_name if host_name else None
     result = client.update_service(service_name, service_data, host_param)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -178,7 +237,7 @@ def delete_service(service_name: str = Field(description="Service name to delete
     client = get_client()
     host_param = host_name if host_name else None
     result = client.delete_service(service_name, host_param)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === SERVICE APPLY RULES ===
@@ -188,7 +247,7 @@ def list_service_apply_rules() -> str:
     """List all service apply rules."""
     client = get_client()
     rules = client.list_service_apply_rules()
-    return json.dumps(rules, indent=2)
+    return json_response(rules)
 
 
 # === HOSTGROUPS ===
@@ -198,7 +257,7 @@ def list_hostgroups() -> str:
     """List all hostgroups."""
     client = get_client()
     groups = client.list_hostgroups()
-    return json.dumps(groups, indent=2)
+    return json_response(groups)
 
 
 @mcp.tool()
@@ -206,7 +265,7 @@ def get_hostgroup(group_name: str = Field(description="Hostgroup name")) -> str:
     """Get single hostgroup."""
     client = get_client()
     group = client.get_hostgroup(group_name)
-    return json.dumps(group, indent=2)
+    return json_response(group)
 
 
 @mcp.tool()
@@ -221,7 +280,7 @@ def create_hostgroup(object_name: str = Field(description="Hostgroup name"),
     if assign_filter:
         group_data["assign_filter"] = assign_filter
     result = client.create_hostgroup(group_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -236,7 +295,7 @@ def update_hostgroup(group_name: str = Field(description="Hostgroup name"),
     if assign_filter:
         group_data["assign_filter"] = assign_filter
     result = client.update_hostgroup(group_name, group_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -244,7 +303,7 @@ def delete_hostgroup(group_name: str = Field(description="Hostgroup name")) -> s
     """Delete a hostgroup."""
     client = get_client()
     result = client.delete_hostgroup(group_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === SERVICEGROUPS ===
@@ -254,7 +313,7 @@ def list_servicegroups() -> str:
     """List all servicegroups."""
     client = get_client()
     groups = client.list_servicegroups()
-    return json.dumps(groups, indent=2)
+    return json_response(groups)
 
 
 @mcp.tool()
@@ -262,7 +321,7 @@ def get_servicegroup(group_name: str = Field(description="Servicegroup name")) -
     """Get single servicegroup."""
     client = get_client()
     group = client.get_servicegroup(group_name)
-    return json.dumps(group, indent=2)
+    return json_response(group)
 
 
 @mcp.tool()
@@ -277,7 +336,7 @@ def create_servicegroup(object_name: str = Field(description="Servicegroup name"
     if assign_filter:
         group_data["assign_filter"] = assign_filter
     result = client.create_servicegroup(group_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -292,7 +351,7 @@ def update_servicegroup(group_name: str = Field(description="Servicegroup name")
     if assign_filter:
         group_data["assign_filter"] = assign_filter
     result = client.update_servicegroup(group_name, group_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -300,7 +359,7 @@ def delete_servicegroup(group_name: str = Field(description="Servicegroup name")
     """Delete a servicegroup."""
     client = get_client()
     result = client.delete_servicegroup(group_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === COMMANDS ===
@@ -310,7 +369,7 @@ def list_commands() -> str:
     """List all check commands."""
     client = get_client()
     commands = client.list_commands()
-    return json.dumps(commands, indent=2)
+    return json_response(commands)
 
 
 @mcp.tool()
@@ -318,7 +377,7 @@ def get_command(command_name: str = Field(description="Command name")) -> str:
     """Get single command."""
     client = get_client()
     command = client.get_command(command_name)
-    return json.dumps(command, indent=2)
+    return json_response(command)
 
 
 @mcp.tool()
@@ -337,7 +396,7 @@ def create_command(object_name: str = Field(description="Command name"),
     if methods_execute:
         command_data["methods_execute"] = methods_execute
     result = client.create_command(command_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -352,7 +411,7 @@ def update_command(command_name: str = Field(description="Command name"),
     if methods_execute:
         command_data["methods_execute"] = methods_execute
     result = client.update_command(command_name, command_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -360,7 +419,7 @@ def delete_command(command_name: str = Field(description="Command name")) -> str
     """Delete a command."""
     client = get_client()
     result = client.delete_command(command_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === TEMPLATES ===
@@ -370,7 +429,7 @@ def list_templates(object_type: str = Field(default="host", description="host or
     """List all templates (host or service)."""
     client = get_client()
     templates = client.list_templates(object_type)
-    return json.dumps(templates, indent=2)
+    return json_response(templates)
 
 
 # === SERVICE SETS ===
@@ -380,7 +439,7 @@ def list_service_sets() -> str:
     """List all service sets."""
     client = get_client()
     sets = client.list_service_sets()
-    return json.dumps(sets, indent=2)
+    return json_response(sets)
 
 
 @mcp.tool()
@@ -388,7 +447,7 @@ def get_service_set(set_name: str = Field(description="Service set name")) -> st
     """Get single service set."""
     client = get_client()
     s = client.get_service_set(set_name)
-    return json.dumps(s, indent=2)
+    return json_response(s)
 
 
 @mcp.tool()
@@ -400,7 +459,7 @@ def create_service_set(object_name: str = Field(description="Service set name"),
     if description:
         set_data["description"] = description
     result = client.create_service_set(set_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -412,7 +471,7 @@ def update_service_set(set_name: str = Field(description="Service set name"),
     if description:
         set_data["description"] = description
     result = client.update_service_set(set_name, set_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -420,7 +479,7 @@ def delete_service_set(set_name: str = Field(description="Service set name")) ->
     """Delete a service set."""
     client = get_client()
     result = client.delete_service_set(set_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === ZONES ===
@@ -430,7 +489,7 @@ def list_zones() -> str:
     """List all zones."""
     client = get_client()
     zones = client.list_zones()
-    return json.dumps(zones, indent=2)
+    return json_response(zones)
 
 
 @mcp.tool()
@@ -438,7 +497,7 @@ def get_zone(zone_name: str = Field(description="Zone name")) -> str:
     """Get single zone."""
     client = get_client()
     zone = client.get_zone(zone_name)
-    return json.dumps(zone, indent=2)
+    return json_response(zone)
 
 
 @mcp.tool()
@@ -454,7 +513,7 @@ def create_zone(object_name: str = Field(description="Zone name"),
     if parent:
         zone_data["parent"] = parent
     result = client.create_zone(zone_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -466,7 +525,7 @@ def update_zone(zone_name: str = Field(description="Zone name"),
     if parent:
         zone_data["parent"] = parent
     result = client.update_zone(zone_name, zone_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -474,7 +533,7 @@ def delete_zone(zone_name: str = Field(description="Zone name")) -> str:
     """Delete a zone."""
     client = get_client()
     result = client.delete_zone(zone_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === ENDPOINTS ===
@@ -484,7 +543,7 @@ def list_endpoints() -> str:
     """List all endpoints."""
     client = get_client()
     endpoints = client.list_endpoints()
-    return json.dumps(endpoints, indent=2)
+    return json_response(endpoints)
 
 
 @mcp.tool()
@@ -492,7 +551,7 @@ def get_endpoint(endpoint_name: str = Field(description="Endpoint name")) -> str
     """Get single endpoint."""
     client = get_client()
     endpoint = client.get_endpoint(endpoint_name)
-    return json.dumps(endpoint, indent=2)
+    return json_response(endpoint)
 
 
 @mcp.tool()
@@ -507,7 +566,7 @@ def create_endpoint(object_name: str = Field(description="Endpoint name"),
     if port:
         endpoint_data["port"] = port
     result = client.create_endpoint(endpoint_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -522,7 +581,7 @@ def update_endpoint(endpoint_name: str = Field(description="Endpoint name"),
     if port:
         endpoint_data["port"] = port
     result = client.update_endpoint(endpoint_name, endpoint_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -530,7 +589,7 @@ def delete_endpoint(endpoint_name: str = Field(description="Endpoint name")) -> 
     """Delete an endpoint."""
     client = get_client()
     result = client.delete_endpoint(endpoint_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === TIMEPERIODS ===
@@ -540,7 +599,7 @@ def list_timeperiods() -> str:
     """List all timeperiods."""
     client = get_client()
     periods = client.list_timeperiods()
-    return json.dumps(periods, indent=2)
+    return json_response(periods)
 
 
 @mcp.tool()
@@ -548,7 +607,7 @@ def get_timeperiod(period_name: str = Field(description="Timeperiod name")) -> s
     """Get single timeperiod."""
     client = get_client()
     period = client.get_timeperiod(period_name)
-    return json.dumps(period, indent=2)
+    return json_response(period)
 
 
 @mcp.tool()
@@ -564,7 +623,7 @@ def create_timeperiod(object_name: str = Field(description="Timeperiod name"),
     if display_name:
         period_data["display_name"] = display_name
     result = client.create_timeperiod(period_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -578,7 +637,7 @@ def update_timeperiod(period_name: str = Field(description="Timeperiod name"),
         period_data["display_name"] = display_name
     period_data["prefer_ranges"] = prefer_ranges
     result = client.update_timeperiod(period_name, period_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -586,7 +645,7 @@ def delete_timeperiod(period_name: str = Field(description="Timeperiod name")) -
     """Delete a timeperiod."""
     client = get_client()
     result = client.delete_timeperiod(period_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === USERS ===
@@ -596,7 +655,7 @@ def list_users() -> str:
     """List all users."""
     client = get_client()
     users = client.list_users()
-    return json.dumps(users, indent=2)
+    return json_response(users)
 
 
 @mcp.tool()
@@ -604,7 +663,7 @@ def get_user(user_name: str = Field(description="User name")) -> str:
     """Get single user."""
     client = get_client()
     user = client.get_user(user_name)
-    return json.dumps(user, indent=2)
+    return json_response(user)
 
 
 @mcp.tool()
@@ -627,7 +686,7 @@ def create_user(object_name: str = Field(description="User name"),
     if email:
         user_data["email"] = email
     result = client.create_user(user_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -642,7 +701,7 @@ def update_user(user_name: str = Field(description="User name"),
     if email:
         user_data["email"] = email
     result = client.update_user(user_name, user_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -650,7 +709,7 @@ def delete_user(user_name: str = Field(description="User name")) -> str:
     """Delete a user."""
     client = get_client()
     result = client.delete_user(user_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === USERGROUPS ===
@@ -660,7 +719,7 @@ def list_usergroups() -> str:
     """List all usergroups."""
     client = get_client()
     groups = client.list_usergroups()
-    return json.dumps(groups, indent=2)
+    return json_response(groups)
 
 
 @mcp.tool()
@@ -668,7 +727,7 @@ def get_usergroup(group_name: str = Field(description="Usergroup name")) -> str:
     """Get single usergroup."""
     client = get_client()
     group = client.get_usergroup(group_name)
-    return json.dumps(group, indent=2)
+    return json_response(group)
 
 
 @mcp.tool()
@@ -680,7 +739,7 @@ def create_usergroup(object_name: str = Field(description="Usergroup name"),
     if display_name:
         group_data["display_name"] = display_name
     result = client.create_usergroup(group_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -692,7 +751,7 @@ def update_usergroup(group_name: str = Field(description="Usergroup name"),
     if display_name:
         group_data["display_name"] = display_name
     result = client.update_usergroup(group_name, group_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -700,7 +759,7 @@ def delete_usergroup(group_name: str = Field(description="Usergroup name")) -> s
     """Delete a usergroup."""
     client = get_client()
     result = client.delete_usergroup(group_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === NOTIFICATIONS ===
@@ -710,7 +769,7 @@ def list_notifications() -> str:
     """List all notifications."""
     client = get_client()
     notifications = client.list_notifications()
-    return json.dumps(notifications, indent=2)
+    return json_response(notifications)
 
 
 @mcp.tool()
@@ -718,7 +777,7 @@ def get_notification(notification_name: str = Field(description="Notification na
     """Get single notification."""
     client = get_client()
     notification = client.get_notification(notification_name)
-    return json.dumps(notification, indent=2)
+    return json_response(notification)
 
 
 @mcp.tool()
@@ -740,7 +799,7 @@ def create_notification(object_name: str = Field(description="Notification name"
     if command:
         notification_data["command"] = command
     result = client.create_notification(notification_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -752,7 +811,7 @@ def update_notification(notification_name: str = Field(description="Notification
     if command:
         notification_data["command"] = command
     result = client.update_notification(notification_name, notification_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -760,7 +819,7 @@ def delete_notification(notification_name: str = Field(description="Notification
     """Delete a notification."""
     client = get_client()
     result = client.delete_notification(notification_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === SCHEDULED DOWNTIMES ===
@@ -770,7 +829,7 @@ def list_downtimes() -> str:
     """List all scheduled downtimes."""
     client = get_client()
     downtimes = client.list_downtimes()
-    return json.dumps(downtimes, indent=2)
+    return json_response(downtimes)
 
 
 @mcp.tool()
@@ -778,7 +837,7 @@ def get_downtime(downtime_name: str = Field(description="Downtime name")) -> str
     """Get single scheduled downtime."""
     client = get_client()
     downtime = client.get_downtime(downtime_name)
-    return json.dumps(downtime, indent=2)
+    return json_response(downtime)
 
 
 @mcp.tool()
@@ -796,7 +855,7 @@ def create_downtime(object_name: str = Field(description="Downtime name"),
     if comment:
         downtime_data["comment"] = comment
     result = client.create_downtime(downtime_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -811,7 +870,7 @@ def update_downtime(downtime_name: str = Field(description="Downtime name"),
     if comment:
         downtime_data["comment"] = comment
     result = client.update_downtime(downtime_name, downtime_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -819,7 +878,7 @@ def delete_downtime(downtime_name: str = Field(description="Downtime name")) -> 
     """Delete a scheduled downtime."""
     client = get_client()
     result = client.delete_downtime(downtime_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === DEPLOYMENT ===
@@ -829,7 +888,7 @@ def deploy_pending_changes() -> str:
     """Deploy pending changes to Icinga2."""
     client = get_client()
     result = client.deploy()
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -840,7 +899,7 @@ def get_deployment_status(configs: str = Field(default="", description="Comma-se
     configs_param = configs if configs else None
     activities_param = activities if activities else None
     result = client.get_deployment_status(configs_param, activities_param)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === ACTIVITY LOG ===
@@ -850,7 +909,7 @@ def get_activity_log(limit: int = Field(default=50, description="Number of entri
     """Get Director activity log."""
     client = get_client()
     log = client.get_activity_log(limit)
-    return json.dumps(log, indent=2)
+    return json_response(log)
 
 
 # === DATA LISTS ===
@@ -860,7 +919,7 @@ def list_datalists() -> str:
     """List all data lists."""
     client = get_client()
     datalists = client.list_datalists()
-    return json.dumps(datalists, indent=2)
+    return json_response(datalists)
 
 
 @mcp.tool()
@@ -868,7 +927,7 @@ def get_datalist(datalist_name: str = Field(description="Data list name")) -> st
     """Get single data list."""
     client = get_client()
     datalist = client.get_datalist(datalist_name)
-    return json.dumps(datalist, indent=2)
+    return json_response(datalist)
 
 
 @mcp.tool()
@@ -880,7 +939,7 @@ def create_datalist(object_name: str = Field(description="Data list name"),
     if owner:
         datalist_data["owner"] = owner
     result = client.create_datalist(datalist_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -892,7 +951,7 @@ def update_datalist(datalist_name: str = Field(description="Data list name"),
     if owner:
         datalist_data["owner"] = owner
     result = client.update_datalist(datalist_name, datalist_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -900,7 +959,7 @@ def delete_datalist(datalist_name: str = Field(description="Data list name")) ->
     """Delete a data list."""
     client = get_client()
     result = client.delete_datalist(datalist_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === DATAFIELDS ===
@@ -910,7 +969,7 @@ def list_datafields() -> str:
     """List all data fields."""
     client = get_client()
     datafields = client.list_datafields()
-    return json.dumps(datafields, indent=2)
+    return json_response(datafields)
 
 
 @mcp.tool()
@@ -918,7 +977,7 @@ def get_datafield(varname: str = Field(description="Variable name")) -> str:
     """Get single data field."""
     client = get_client()
     datafield = client.get_datafield(varname)
-    return json.dumps(datafield, indent=2)
+    return json_response(datafield)
 
 
 @mcp.tool()
@@ -934,7 +993,7 @@ def create_datafield(varname: str = Field(description="Variable name"),
     if caption:
         datafield_data["caption"] = caption
     result = client.create_datafield(datafield_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -946,7 +1005,7 @@ def update_datafield(varname: str = Field(description="Variable name"),
     if caption:
         datafield_data["caption"] = caption
     result = client.update_datafield(varname, datafield_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -954,7 +1013,7 @@ def delete_datafield(varname: str = Field(description="Variable name")) -> str:
     """Delete a data field."""
     client = get_client()
     result = client.delete_datafield(varname)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === IMPORT SOURCES ===
@@ -964,7 +1023,7 @@ def list_import_sources() -> str:
     """List all import sources."""
     client = get_client()
     sources = client.list_import_sources()
-    return json.dumps(sources, indent=2)
+    return json_response(sources)
 
 
 @mcp.tool()
@@ -972,7 +1031,7 @@ def get_import_source(source_name: str = Field(description="Import source name")
     """Get single import source."""
     client = get_client()
     source = client.get_import_source(source_name)
-    return json.dumps(source, indent=2)
+    return json_response(source)
 
 
 @mcp.tool()
@@ -985,7 +1044,7 @@ def create_import_source(object_name: str = Field(description="Import source nam
         "source_type": source_type,
     }
     result = client.create_import_source(source_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -997,7 +1056,7 @@ def update_import_source(source_name: str = Field(description="Import source nam
     if source_type:
         source_data["source_type"] = source_type
     result = client.update_import_source(source_name, source_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -1005,7 +1064,7 @@ def delete_import_source(source_name: str = Field(description="Import source nam
     """Delete an import source."""
     client = get_client()
     result = client.delete_import_source(source_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === SYNC RULES ===
@@ -1015,7 +1074,7 @@ def list_sync_rules() -> str:
     """List all sync rules."""
     client = get_client()
     rules = client.list_sync_rules()
-    return json.dumps(rules, indent=2)
+    return json_response(rules)
 
 
 @mcp.tool()
@@ -1023,7 +1082,7 @@ def get_sync_rule(rule_name: str = Field(description="Sync rule name")) -> str:
     """Get single sync rule."""
     client = get_client()
     rule = client.get_sync_rule(rule_name)
-    return json.dumps(rule, indent=2)
+    return json_response(rule)
 
 
 @mcp.tool()
@@ -1039,7 +1098,7 @@ def create_sync_rule(object_name: str = Field(description="Sync rule name"),
     if purge_action:
         rule_data["purge_action"] = purge_action
     result = client.create_sync_rule(rule_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -1054,7 +1113,7 @@ def update_sync_rule(rule_name: str = Field(description="Sync rule name"),
     if purge_action:
         rule_data["purge_action"] = purge_action
     result = client.update_sync_rule(rule_name, rule_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -1062,7 +1121,7 @@ def delete_sync_rule(rule_name: str = Field(description="Sync rule name")) -> st
     """Delete a sync rule."""
     client = get_client()
     result = client.delete_sync_rule(rule_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === JOBS ===
@@ -1072,7 +1131,7 @@ def list_jobs() -> str:
     """List all jobs."""
     client = get_client()
     jobs = client.list_jobs()
-    return json.dumps(jobs, indent=2)
+    return json_response(jobs)
 
 
 @mcp.tool()
@@ -1080,7 +1139,7 @@ def get_job(job_name: str = Field(description="Job name")) -> str:
     """Get single job."""
     client = get_client()
     job = client.get_job(job_name)
-    return json.dumps(job, indent=2)
+    return json_response(job)
 
 
 @mcp.tool()
@@ -1096,7 +1155,7 @@ def create_job(object_name: str = Field(description="Job name"),
     if action:
         job_data["action"] = action
     result = client.create_job(job_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -1108,7 +1167,7 @@ def update_job(job_name: str = Field(description="Job name"),
     if action:
         job_data["action"] = action
     result = client.update_job(job_name, job_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -1116,7 +1175,7 @@ def delete_job(job_name: str = Field(description="Job name")) -> str:
     """Delete a job."""
     client = get_client()
     result = client.delete_job(job_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -1124,7 +1183,7 @@ def run_job(job_name: str = Field(description="Job name")) -> str:
     """Run a job."""
     client = get_client()
     result = client.run_job(job_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 # === BRANCHES ===
@@ -1134,7 +1193,7 @@ def list_branches() -> str:
     """List all branches."""
     client = get_client()
     branches = client.list_branches()
-    return json.dumps(branches, indent=2)
+    return json_response(branches)
 
 
 @mcp.tool()
@@ -1142,7 +1201,7 @@ def get_branch(branch_name: str = Field(description="Branch name")) -> str:
     """Get single branch."""
     client = get_client()
     branch = client.get_branch(branch_name)
-    return json.dumps(branch, indent=2)
+    return json_response(branch)
 
 
 @mcp.tool()
@@ -1154,7 +1213,7 @@ def create_branch(object_name: str = Field(description="Branch name"),
     if description:
         branch_data["description"] = description
     result = client.create_branch(branch_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -1166,7 +1225,7 @@ def update_branch(branch_name: str = Field(description="Branch name"),
     if description:
         branch_data["description"] = description
     result = client.update_branch(branch_name, branch_data)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -1174,7 +1233,7 @@ def delete_branch(branch_name: str = Field(description="Branch name")) -> str:
     """Delete a branch."""
     client = get_client()
     result = client.delete_branch(branch_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 @mcp.tool()
@@ -1182,7 +1241,7 @@ def merge_branch(branch_name: str = Field(description="Branch name")) -> str:
     """Merge a branch."""
     client = get_client()
     result = client.merge_branch(branch_name)
-    return json.dumps(result, indent=2)
+    return json_response(result)
 
 
 def main():

@@ -74,12 +74,18 @@ ICINGA_HOST=<your-icinga-host>
 ICINGA_USER=<api-user>
 ICINGA_PASSWORD=<your-api-password>
 ICINGA_VERIFY_SSL=false
+ICINGA_REQUEST_TIMEOUT=30
+ICINGA_POOL_CONNECTIONS=20
+ICINGA_POOL_MAXSIZE=50
 
 # Director MCP
 DIRECTOR_BASE_URL=https://<your-icinga-host>/director
 DIRECTOR_USER=<your-icingaweb2-user>
 DIRECTOR_PASSWORD=<your-icingaweb2-password>
 DIRECTOR_VERIFY_SSL=false
+DIRECTOR_REQUEST_TIMEOUT=30
+DIRECTOR_POOL_CONNECTIONS=20
+DIRECTOR_POOL_MAXSIZE=50
 ```
 
 All settings can also be passed as environment variables.
@@ -97,6 +103,19 @@ python -m src.director_mcp.server
 ```
 
 Both servers use **streamable-http** transport and bind to `0.0.0.0` by default.
+
+## Performance notes
+
+- Large `list_hosts` / `list_services` responses now use compact JSON to reduce MCP payload size.
+- Icinga2 list endpoints now request only required attributes from the API, which reduces backend load.
+- HTTP clients now reuse pooled connections and enforce configurable request timeouts.
+- Director `list_hosts` and `list_services` support:
+
+```text
+limit   # max returned objects, 0 = all
+offset  # skip first N objects
+summary # compact response for large inventories
+```
 
 ## Integration
 
