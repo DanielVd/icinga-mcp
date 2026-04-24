@@ -1,11 +1,11 @@
 """Icinga Director REST API client."""
 
 import os
-from datetime import datetime
 from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter
+from requests.exceptions import RequestException
 
 
 DEFAULT_TIMEOUT = float(os.getenv("DIRECTOR_REQUEST_TIMEOUT", "30"))
@@ -37,24 +37,31 @@ class DirectorClient:
         self.session.mount("https://", adapter)
 
     def _get(self, path: str, params: Optional[dict] = None) -> dict:
-        resp = self.session.get(f"{self.base_url}/{path}", params=params, timeout=self.timeout)
-        resp.raise_for_status()
-        return resp.json()
+        return self._request("GET", path, params=params)
 
     def _post(self, path: str, data: dict, params: Optional[dict] = None) -> dict:
-        resp = self.session.post(f"{self.base_url}/{path}", json=data, params=params, timeout=self.timeout)
-        resp.raise_for_status()
-        return resp.json()
+        return self._request("POST", path, json=data, params=params)
 
     def _put(self, path: str, data: dict, params: Optional[dict] = None) -> dict:
-        resp = self.session.put(f"{self.base_url}/{path}", json=data, params=params, timeout=self.timeout)
-        resp.raise_for_status()
-        return resp.json()
+        return self._request("PUT", path, json=data, params=params)
 
     def _delete(self, path: str, params: Optional[dict] = None) -> dict:
-        resp = self.session.delete(f"{self.base_url}/{path}", params=params, timeout=self.timeout)
-        resp.raise_for_status()
-        return resp.json()
+        return self._request("DELETE", path, params=params)
+
+    def _request(self, method: str, path: str, **kwargs) -> dict:
+        try:
+            resp = self.session.request(method, f"{self.base_url}/{path}", timeout=self.timeout, **kwargs)
+            resp.raise_for_status()
+        except RequestException as exc:
+            status_code = getattr(getattr(exc, "response", None), "status_code", "request-error")
+            response_text = getattr(getattr(exc, "response", None), "text", "") or str(exc)
+            detail = response_text.strip().replace("\n", " ")[:500]
+            raise RuntimeError(f"Director API request failed for {method} {path}: {status_code} {detail}") from exc
+
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise RuntimeError(f"Director API returned invalid JSON for {method} {path}") from exc
 
     # Hosts
 
