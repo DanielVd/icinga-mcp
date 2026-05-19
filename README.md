@@ -1,6 +1,7 @@
 # icinga-mcp
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![Latest Release](https://img.shields.io/github/v/release/DanielVd/icinga-mcp)](https://github.com/DanielVd/icinga-mcp/releases/latest)
 [![MCP Protocol](https://img.shields.io/badge/MCP-1.0+-orange.svg)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
