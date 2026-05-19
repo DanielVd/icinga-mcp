@@ -1,45 +1,32 @@
-# Icinga MCP Servers
+# icinga-mcp
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-1.0+-orange.svg)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Two [Model Context Protocol](https://modelcontextprotocol.io/) servers that enable AI assistants to interact with [Icinga2](https://icinga.com/products/icinga-2/) monitoring and [Icinga Director](https://github.com/Icinga/icingaweb2-module-director) configuration management.
+Two MCP servers for Icinga2 monitoring and Icinga Director automation.
 
-## What This Project Does
+## Table of Contents
 
-**Icinga2 MCP** lets AI assistants query your monitoring infrastructure in real-time: check host and service status, schedule downtimes, acknowledge alerts, and submit passive check results.
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Performance Notes](#performance-notes)
+- [Integration](#integration)
+- [Troubleshooting](#troubleshooting)
+- [Security Notes](#security-notes)
+- [License](#license)
 
-**Director MCP** gives AI assistants full CRUD access to Icinga Director configuration: create hosts and services, manage templates, deploy configurations, and handle the complete Icinga object lifecycle.
+## Features
 
-Together they provide **122 tools** for complete Icinga infrastructure management through any MCP-compatible AI client (LibreChat, Cursor, Claude Desktop, etc.).
+- Icinga2 MCP: query hosts/services, status, checks
+- Director MCP: automation for objects and config workflows
+- Streamable HTTP transport for MCP clients
+- Connection pooling and timeout controls
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      AI Client (MCP)                        │
-│              (LibreChat, Cursor, Claude Desktop)             │
-└──────────────────────┬──────────────────────────────────────┘
-                       │ streamable-http
-          ┌────────────┴────────────┐
-          │                         │
-   ┌──────▼──────┐          ┌───────▼──────┐
-   │ Icinga2 MCP │          │ Director MCP │
-   │  (19 tools) │          │ (103 tools)  │
-   │  port 8092  │          │  port 8093   │
-   └──────┬──────┘          └───────┬──────┘
-          │                         │
-          │ Icinga2 REST API        │ Director REST API
-          │ (port 5665)             │ (Icinga Web 2)
-          │                         │
-   ┌──────▼─────────────────────────▼──────┐
-   │          Icinga2 + Director           │
-   │        (your-icinga-server)           │
-   └───────────────────────────────────────┘
-```
-
-## Prerequisites
+## Requirements
 
 - Python 3.10+
 - Icinga2 with API enabled (`api` feature)
@@ -49,22 +36,28 @@ Together they provide **122 tools** for complete Icinga infrastructure managemen
 ## Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/DanielVd/icinga-mcp.git
 cd icinga-mcp
-
-# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install package and dependencies
 pip install -e .
-
-# Create configuration
 cp .env.example .env
 ```
 
+## Quick Start
+
+```bash
+source .venv/bin/activate
+python -m src.icinga2_mcp.server
+python -m src.director_mcp.server
+```
+
+Default ports:
+- Icinga2 MCP: `8092`
+- Director MCP: `8093`
+
 ## Configuration
+
 
 Edit `.env` with your Icinga credentials:
 
