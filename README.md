@@ -1,4 +1,5 @@
 # icinga-mcp
+[![Latest Release](https://img.shields.io/github/v/release/DanielVd/icinga-mcp)](https://github.com/DanielVd/icinga-mcp/releases/latest)
 
 ## Table of Contents
 
@@ -41,5 +42,4 @@
 ## License
 
 ## Existing Notes
-
 
