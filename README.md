@@ -321,4 +321,4 @@ MIT. See [LICENSE](LICENSE) for details.
 
 ## Maintainer
 
-Daniel Vedovato: [GitHub](https://github.com/DanielVd) · [Gitea](https://code.danielvedovato.it/forgeadmin)
+Daniel Vedovato: [GitHub](https://github.com/DanielVd)
