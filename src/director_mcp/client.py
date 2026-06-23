@@ -1,11 +1,17 @@
 """Icinga Director REST API client."""
 
 import os
+import re
 from typing import Optional
+from urllib.parse import urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
 from requests.exceptions import RequestException
+
+from .deployment_log import parse_deployment_list, parse_startup_log
+
+_CSRF_RE = re.compile(r'name="CSRFToken"\s+value="([^"]+)"')
 
 
 DEFAULT_TIMEOUT = float(os.getenv("DIRECTOR_REQUEST_TIMEOUT", "30"))
@@ -422,6 +428,82 @@ class DirectorClient:
         if activities:
             params["activities"] = activities
         return self._get("config/deployment-status", params=params)
+
+    # Deployment Log (web UI scrape)
+    #
+    # The REST API does not expose the Icinga2 startup log of a deployment.
+    # It is only rendered in the web UI, which requires a form-based session
+    # login (HTTP basic auth yields the login page). We log in, then read the
+    # deployment list / detail pages and parse them in deployment_log.py.
+
+    def _web_root(self) -> str:
+        parsed = urlparse(self.base_url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    def _web_login_session(self) -> requests.Session:
+        """Authenticate against IcingaWeb2 and return a session with the cookie."""
+        web_root = self._web_root()
+        login_url = f"{web_root}/authentication/login"
+        session = requests.Session()
+        session.verify = self.verify_ssl
+
+        try:
+            form = session.get(login_url, timeout=self.timeout)
+            form.raise_for_status()
+            csrf_match = _CSRF_RE.search(form.text)
+            if not csrf_match:
+                raise RuntimeError("Director web login: CSRF token not found on login page")
+            payload = {
+                "username": self.user,
+                "password": self.password,
+                "rememberme": "0",
+                "redirect": "director",
+                "formUID": "form_login",
+                "CSRFToken": csrf_match.group(1),
+                "btn_submit": "Login",
+            }
+            resp = session.post(login_url, data=payload, timeout=self.timeout, allow_redirects=False)
+        except RequestException as exc:
+            raise RuntimeError(f"Director web login request failed: {exc}") from exc
+
+        if resp.status_code not in (301, 302) or "icingaweb2-session" not in session.cookies:
+            raise RuntimeError(
+                f"Director web login failed (status {resp.status_code}); check credentials"
+            )
+        return session
+
+    def get_deployment_log(self, deployment_id: Optional[int] = None) -> dict:
+        """Fetch and parse the Icinga2 startup log of a deployment.
+
+        When ``deployment_id`` is None, the most recent deployment is used.
+        """
+        session = self._web_login_session()
+        try:
+            if deployment_id is None:
+                listing = session.get(
+                    f"{self.base_url}/config/deployments",
+                    timeout=self.timeout,
+                    headers={"Accept": "text/html"},
+                )
+                listing.raise_for_status()
+                deployments = parse_deployment_list(listing.text)
+                if not deployments:
+                    raise RuntimeError("No deployments found in Director")
+                deployment_id = deployments[0]["id"]
+
+            detail = session.get(
+                f"{self.base_url}/deployment",
+                params={"id": deployment_id},
+                timeout=self.timeout,
+                headers={"Accept": "text/html"},
+            )
+            detail.raise_for_status()
+        except RequestException as exc:
+            raise RuntimeError(f"Director deployment-log request failed: {exc}") from exc
+
+        result = parse_startup_log(detail.text)
+        result["deployment_id"] = int(deployment_id)
+        return result
 
     # Activity Log
 

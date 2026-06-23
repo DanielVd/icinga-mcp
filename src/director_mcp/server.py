@@ -910,6 +910,21 @@ def get_deployment_status(configs: str = Field(default="", description="Comma-se
     return json_response(result)
 
 
+@mcp.tool()
+def get_deployment_log(deployment_id: int = Field(default=0, description="Deployment ID; 0 = most recent deployment")) -> str:
+    """Get the Icinga2 startup log of a Director deployment, including config validation warnings/errors.
+
+    The Director REST API does not expose this log, so it is read from the web UI
+    (deployment detail page) via an authenticated session. Returns the stage name,
+    whether startup succeeded, a per-level summary, the warning/critical entries and
+    all parsed log entries.
+    """
+    client = get_client()
+    target = deployment_id if deployment_id > 0 else None
+    result = client.get_deployment_log(target)
+    return json_response(result)
+
+
 # === ACTIVITY LOG ===
 
 @mcp.tool()
