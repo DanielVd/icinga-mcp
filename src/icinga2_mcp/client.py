@@ -1,14 +1,12 @@
 """Icinga2 API client."""
 
 import os
+import time
 from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter
 from requests.exceptions import RequestException
-from urllib3.exceptions import InsecureRequestWarning
-
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 DEFAULT_TIMEOUT = float(os.getenv("ICINGA_REQUEST_TIMEOUT", "30"))
 DEFAULT_POOL_CONNECTIONS = int(os.getenv("ICINGA_POOL_CONNECTIONS", "20"))
@@ -18,9 +16,11 @@ DEFAULT_POOL_MAXSIZE = int(os.getenv("ICINGA_POOL_MAXSIZE", "50"))
 class Icinga2Client:
     """Client for Icinga2 REST API."""
 
-    def __init__(self, host: str, user: str, password: str, verify_ssl: bool = False):
-        self.base_url = f"https://{host}:5665/v1"
+    def __init__(self, host: str, user: str, password: str, verify_ssl: bool | str = False, *,
+                 base_url: str | None = None, action_author: str | None = None):
+        self.base_url = base_url.rstrip("/") if base_url else f"https://{host}:5665/v1"
         self.auth = (user, password)
+        self.action_author = action_author
         self.verify = verify_ssl
         self.timeout = DEFAULT_TIMEOUT
         self.session = requests.Session()
@@ -42,6 +42,11 @@ class Icinga2Client:
 
     def _post(self, path: str, data: dict) -> dict:
         return self._request("POST", path, json=data)
+
+    def _query_objects(self, path: str, params: dict) -> dict:
+        if "filter_vars" in params:
+            return self._request("POST", path, json=params, headers={"X-HTTP-Method-Override": "GET"})
+        return self._get(path, params)
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
         try:
@@ -78,8 +83,8 @@ class Icinga2Client:
 
     def get_host(self, name: str) -> dict:
         """Get single host by name."""
-        result = self._get(f"objects/hosts/{name}")
-        return result.get("results", [{}])[0]
+        result = self._get("objects/hosts", {"host": name})
+        return self._single_result(result, f"Host {name!r}")
 
     def list_services(
         self,
@@ -94,15 +99,31 @@ class Icinga2Client:
         if attrs:
             params["attrs"] = attrs
         if host:
-            result = self._get(f"objects/services", {"host": host, **params})
-        else:
-            result = self._get("objects/services", params)
+            host_constraint = "service.host_name == target_host"
+            params["filter"] = f"({service_filter}) && {host_constraint}" if service_filter else host_constraint
+            params["filter_vars"] = {"target_host": host}
+        result = self._query_objects("objects/services", params)
         return result.get("results", [])
 
     def get_service(self, host: str, service: str) -> dict:
         """Get single service by host and name."""
-        result = self._get(f"objects/services/{host}/{service}")
-        return result.get("results", [{}])[0]
+        result = self._get("objects/services", {"service": f"{host}!{service}"})
+        return self._single_result(result, f"Service {service!r} on {host!r}")
+
+    @staticmethod
+    def _single_result(result: dict, description: str) -> dict:
+        rows = result.get("results", [])
+        if not rows:
+            raise ValueError(f"{description} was not found")
+        return rows[0]
+
+    @staticmethod
+    def _action_target(host: str, service: str | None) -> dict:
+        if not host:
+            raise ValueError("Host name cannot be empty")
+        if service:
+            return {"service": f"{host}!{service}"}
+        return {"host": host}
 
     def list_hostgroups(self, attrs: Optional[list[str]] = None) -> list:
         """List all hostgroups."""
@@ -120,56 +141,70 @@ class Icinga2Client:
         """List all downtimes, optionally filtered by host."""
         params = {}
         if host:
-            params["filter"] = f'host.name=="{host}"'
+            params["filter"] = "downtime.host_name == target_host"
+            params["filter_vars"] = {"target_host": host}
         if attrs:
             params["attrs"] = attrs
-        result = self._get("objects/downtimes", params)
+        result = self._query_objects("objects/downtimes", params)
         return result.get("results", [])
 
     def add_downtime(self, host: str, author: str, comment: str,
-                     duration: int = 3600, service: Optional[str] = None) -> dict:
+                     duration: int = 3600, service: Optional[str] = None, *,
+                     start_time: int | None = None, all_services: bool | None = None) -> dict:
         """Add downtime for host or service."""
+        if duration <= 0:
+            raise ValueError("Downtime duration must be positive")
+        if service and all_services:
+            raise ValueError("all_services is only valid for a host downtime")
+        start = int(time.time()) if start_time is None else start_time
         data = {
-            "type": "Downtime",
-            "filter": f'host.name=="{host}"' + (f' && service.name=="{service}"' if service else ""),
-            "author": author,
+            **self._action_target(host, service),
+            "author": self.action_author or author,
             "comment": comment,
-            "duration": duration,
-            "all_services": service is None,
+            "start_time": start,
+            "end_time": start + duration,
+            "fixed": True,
+            "all_services": service is None if all_services is None else all_services,
         }
         return self._post("actions/schedule-downtime", data)
 
-    def remove_downtime(self, downtime_name: str) -> dict:
-        """Remove downtime by name."""
+    def remove_downtime(self, downtime_name: str, *, host: str | None = None,
+                        service: str | None = None) -> dict:
+        """Remove one downtime by name or the downtimes on an exact host or service."""
+        if bool(downtime_name) == bool(host) or (service and not host):
+            raise ValueError("Specify either downtime_name or host (with optional service)")
+        target = {"downtime": downtime_name} if downtime_name else self._action_target(host or "", service)
         data = {
-            "type": "Downtime",
-            "filter": f'name=="{downtime_name}"',
-            "author": "mcp-server",
+            **target,
+            "author": self.action_author or "mcp-server",
             "comment": "Removed via MCP",
         }
         return self._post("actions/remove-downtime", data)
 
     def add_acknowledgement(self, host: str, author: str, comment: str,
                             service: Optional[str] = None, sticky: bool = True,
-                            notify: bool = True, persistent: bool = False) -> dict:
+                            notify: bool = True, persistent: bool = False, *,
+                            expiry_seconds: int | None = None) -> dict:
         """Add acknowledgement for host or service."""
         data = {
-            "type": "Service" if service else "Host",
-            "filter": f'host.name=="{host}"' + (f' && service.name=="{service}"' if service else ""),
-            "author": author,
+            **self._action_target(host, service),
+            "author": self.action_author or author,
             "comment": comment,
             "sticky": sticky,
             "notify": notify,
             "persistent": persistent,
         }
+        if expiry_seconds is not None:
+            if expiry_seconds <= 0:
+                raise ValueError("Acknowledgement expiry must be positive")
+            data["expiry"] = int(time.time()) + expiry_seconds
         return self._post("actions/acknowledge-problem", data)
 
     def remove_acknowledgement(self, host: str, service: Optional[str] = None) -> dict:
         """Remove acknowledgement for host or service."""
         data = {
-            "type": "Service" if service else "Host",
-            "filter": f'host.name=="{host}"' + (f' && service.name=="{service}"' if service else ""),
-            "author": "mcp-server",
+            **self._action_target(host, service),
+            "author": self.action_author or "mcp-server",
             "comment": "Removed via MCP",
         }
         return self._post("actions/remove-acknowledgement", data)
@@ -177,13 +212,8 @@ class Icinga2Client:
     def reschedule_check(self, host: str, service: Optional[str] = None,
                          force: bool = True) -> dict:
         """Reschedule check for host or service."""
-        obj_type = "Service" if service else "Host"
-        filter_str = f'host.name=="{host}"'
-        if service:
-            filter_str += f' && service.name=="{service}"'
         data = {
-            "type": obj_type,
-            "filter": filter_str,
+            **self._action_target(host, service),
             "force": force,
         }
         return self._post("actions/reschedule-check", data)
@@ -215,10 +245,11 @@ class Icinga2Client:
         """List all notifications."""
         params = {}
         if host:
-            params["filter"] = f'host.name=="{host}"'
+            params["filter"] = "notification.host_name == target_host"
+            params["filter_vars"] = {"target_host": host}
         if attrs:
             params["attrs"] = attrs
-        result = self._get("objects/notifications", params)
+        result = self._query_objects("objects/notifications", params)
         return result.get("results", [])
 
     def process_check_result(self, host: str, service: Optional[str],
@@ -226,12 +257,9 @@ class Icinga2Client:
                              check_source: str = "mcp-server") -> dict:
         """Process passive check result."""
         data = {
+            **self._action_target(host, service),
             "exit_status": exit_status,
             "plugin_output": output,
             "check_source": check_source,
         }
-        if service:
-            endpoint = f"process-check-result/{host}/{service}"
-        else:
-            endpoint = f"process-check-result/{host}"
-        return self._post(f"actions/{endpoint}", data)
+        return self._post("actions/process-check-result", data)

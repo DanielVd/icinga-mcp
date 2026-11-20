@@ -16,10 +16,12 @@ MCP servers for Icinga2 and Icinga Director automation.
 - [Integration](#integration)
 - [Troubleshooting](#troubleshooting)
 - [Security Notes](#security-notes)
+- [Attribution](#attribution)
 
 ## Features
 
-- Icinga2 monitoring queries
+- Icinga2 monitoring queries, active problems, and named Core instances
+- Optional Linuxfabrik monitoring-plugins catalog
 - Director configuration automation
 - Streamable HTTP MCP transport
 
@@ -43,17 +45,48 @@ cp .env.example .env
 ## Quick Start
 
 ```bash
-python -m src.icinga2_mcp.server
-python -m src.director_mcp.server
+icinga2-mcp
+director-mcp
 ```
 
 ## Configuration
 
 Set required credentials in `.env` (`ICINGA_*`, `DIRECTOR_*`).
 
+### Named Core instances
+
+The existing `ICINGA_HOST`, `ICINGA_USER` and `ICINGA_PASSWORD` settings configure a single instance named `default`. That API account is used for both reads and writes. For named instances and separate permissions, use settings such as:
+
+```ini
+ICINGA_INSTANCES__PROD__URL=https://prod.example:5665/v1
+ICINGA_INSTANCES__PROD__USER=monitoring-reader
+ICINGA_INSTANCES__PROD__PASSWORD=<read-password>
+ICINGA_INSTANCES__PROD__CA_BUNDLE=/path/to/icinga-ca.pem
+
+ICINGA_INSTANCES__STAGING__URL=https://staging.example:5665/v1
+ICINGA_INSTANCES__STAGING__USER=monitoring-reader
+ICINGA_INSTANCES__STAGING__PASSWORD=<read-password>
+ICINGA_INSTANCES__STAGING__WRITE_USER=monitoring-operator
+ICINGA_INSTANCES__STAGING__WRITE_PASSWORD=<write-password>
+```
+
+Named instances take precedence over the single-instance settings. Include the API path `/v1` in each URL. Certificate verification defaults to on for named instances. Set `CA_BUNDLE` when the server certificate uses a private CA. Use restricted Icinga API accounts for each role.
+
+Call `health_check` to discover instance names. For nested environment variables, names such as `PROD` become `prod`. Pass `instance` to Core tools when more than one is configured. A named instance is read-only unless both write credentials are set. The server exposes write tools only when at least one instance can use them. For named instances, acknowledgements and downtimes use the configured write account as their author.
+
+### Linuxfabrik plugin catalog
+
+Clone the [Linuxfabrik monitoring-plugins repository](https://github.com/Linuxfabrik/monitoring-plugins), then add to the server environment or `.env`:
+
+```ini
+ICINGA_PLUGIN_CATALOG_PATH=/path/to/monitoring-plugins/check-plugins
+```
+
+The server indexes plugin metadata and source at startup. Restart it to refresh the catalog after updating the checkout. `list_plugins` filters by platform or name, `explain_plugin` shows arguments, states and metrics, and `find_plugin_for_check_command` matches Director check commands. `read_plugin_source` returns the source or one top-level function without running the plugin. `catalog_info` reports the catalog size. These tools also work without any Core credentials.
+
 ## Integration
 
-Use MCP client with streamable-http endpoints on ports `8092` and `8093`.
+Use the `/mcp` HTTP endpoints on ports `8092` for Core and `8093` for Director. Set `ICINGA_TRANSPORT=stdio` to run Core as an MCP client subprocess.
 
 ## Troubleshooting
 
@@ -64,3 +97,7 @@ Use MCP client with streamable-http endpoints on ports `8092` and `8093`.
 
 - never commit `.env`
 - use least-privilege Icinga accounts
+
+## Attribution
+
+The Linuxfabrik catalog parser, loader and schema were adapted from [Linuxfabrik MCP Server for Icinga at `fd681ab`](https://github.com/linuxfabrik/mcp-server-icinga/tree/fd681abda91bec51c0a42fd4cf3122f3ad94df8d/src/mcp_server_icinga/plugin_catalog). See the [Unlicense](src/icinga2_mcp/plugin_catalog/LICENSE) and [copyright notice](src/icinga2_mcp/plugin_catalog/COPYRIGHT) for those files.
