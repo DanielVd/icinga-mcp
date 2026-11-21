@@ -1,0 +1,24 @@
+version = 1
+
+[[annotations]]
+path = [
+    "*.md",
+    ".editorconfig",
+    ".env.example",
+    ".gitignore",
+    ".github/**",
+    "docs/**",
+    "pyproject.toml",
+    "src/director_mcp/*.py",
+    "src/icinga2_mcp/*.py",
+    "tests/*.py",
+    "tools/*.py",
+]
+SPDX-FileCopyrightText = "2026 Daniel Vedovato"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "src/icinga2_mcp/plugin_catalog/**"
+SPDX-FileCopyrightText = "NONE"
+SPDX-License-Identifier = "Unlicense"
+SPDX-FileComment = "Upstream authors and public domain dedication are recorded in the vendored COPYRIGHT file."

@@ -1,136 +1,63 @@
 # icinga-mcp
 
-[![Latest Release](https://img.shields.io/github/v/release/DanielVd/icinga-mcp)](https://github.com/DanielVd/icinga-mcp/releases/latest)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+[![Latest release](https://img.shields.io/github/v/release/DanielVd/icinga-mcp)](https://github.com/DanielVd/icinga-mcp/releases/latest)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 
-MCP servers for Icinga2 and Icinga Director automation.
+Self-hosted Model Context Protocol (MCP) servers for an existing Icinga installation. Use Core to inspect live problems and run checks. Use Director to inspect or manage configuration.
 
-## Table of Contents
+| Server | Typical use | Default endpoint |
+| --- | --- | --- |
+| `icinga2-mcp` | Live host and service state, problem triage, checks, acknowledgements and downtimes | `http://127.0.0.1:8092/mcp` |
+| `director-mcp` | Director inventory, configuration changes and deployment verification | `http://127.0.0.1:8093/mcp` |
 
-- [Features](#features)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Integration](#integration)
-- [Troubleshooting](#troubleshooting)
-- [Security Notes](#security-notes)
-- [Attribution](#attribution)
+The project publishes GitHub Releases and is currently in the SemVer `0.x` series. Check the [changelog](CHANGELOG.md) before upgrading.
 
-## Features
+## Quick start
 
-- Icinga2 monitoring queries, active problems, and named Core instances
-- Optional Linuxfabrik monitoring-plugins catalog
-- Director configuration automation
-- Streamable HTTP MCP transport
+1. Install Python 3.10 or later and Git. For Core, have a reachable Icinga 2 API and an API account. For Director, have a reachable Icinga Web 2 Director module and an account with Director API access.
+2. Clone the repository and create a virtual environment. These commands use a POSIX shell.
 
-## Requirements
+   ```sh
+   git clone https://github.com/DanielVd/icinga-mcp.git
+   cd icinga-mcp
+   python3 -m venv .venv
+   . .venv/bin/activate
+   python -m pip install -e .
+   cp .env.example .env
+   ```
 
-- Python 3.10+
-- Icinga2 API enabled
-- Icinga Director installed
+3. Replace the placeholders in `.env` for the server you want to run. Core uses `ICINGA_HOST`, `ICINGA_USER` and `ICINGA_PASSWORD`. Director uses `DIRECTOR_BASE_URL`, `DIRECTOR_USER` and `DIRECTOR_PASSWORD`. See the [configuration guide](docs/configuration.md) for permissions and TLS.
+4. From the repository root, run `.venv/bin/icinga2-mcp` or `.venv/bin/director-mcp`. Start each server in its own terminal if you want both.
+5. In the client, add the appropriate endpoint using **Streamable HTTP**. Use an address reachable from the client host or container. If the client filters tool names, include the tools you want it to call.
 
-## Installation
+Test the connection with a read-only call.
 
-```bash
-git clone https://github.com/DanielVd/icinga-mcp.git
-cd icinga-mcp
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-cp .env.example .env
-```
+| Server | Tool | Arguments |
+| --- | --- | --- |
+| Core | `get_problems` | `{"limit": 5}` |
+| Director | `list_hosts` | `{"limit": 5, "summary": true}` |
 
-## Quick Start
+The [release page](https://github.com/DanielVd/icinga-mcp/releases/latest) also provides a Python wheel. Install the downloaded wheel with `python -m pip install <wheel-path>` and use `.env.example` from the matching source release as a starting point.
 
-```bash
-icinga2-mcp
-director-mcp
-```
+## What you can do
 
-## Configuration
+- Request a triage summary. For example, ask Core for critical services without an acknowledgement or downtime. Use `get_problems` with `{"severity":"CRITICAL","acknowledged":false,"in_downtime":false}`.
+- Inspect a single live host or service with the Core tools. State and output are available through Core. Director shows configured objects.
+- Use separate read and write credentials for a [named Core instance](docs/configuration.md#named-core-instances).
+- Enable [Icinga DB Web history](docs/configuration.md#incident-history) or the [Linuxfabrik plugin catalog](docs/configuration.md#linuxfabrik-plugin-catalog).
+- Verify whether a Director configuration checksum is active. Enable the [optional activity reader](docs/operations.md#director-deployment-preview) to see pending changes before a deployment.
 
-Set required credentials in `.env` (`ICINGA_*`, `DIRECTOR_*`).
+## Documentation
 
-### Named Core instances
+- [Configuration and environment variables](docs/configuration.md)
+- [Architecture, deployment and troubleshooting](docs/operations.md)
+- [Development, build and tests](CONTRIBUTING.md#development)
+- [Releasing and supply-chain records](docs/releasing.md)
+- [Security reporting](SECURITY.md) and [support](SUPPORT.md)
+- [Repository guidance for coding agents](AGENTS.md)
 
-The existing `ICINGA_HOST`, `ICINGA_USER` and `ICINGA_PASSWORD` settings configure a single instance named `default`. That API account is used for both reads and writes. For named instances and separate permissions, use settings such as:
+## Security and licensing
 
-```ini
-ICINGA_INSTANCES__PROD__URL=https://prod.example:5665/v1
-ICINGA_INSTANCES__PROD__USER=monitoring-reader
-ICINGA_INSTANCES__PROD__PASSWORD=<read-password>
-ICINGA_INSTANCES__PROD__CA_BUNDLE=/path/to/icinga-ca.pem
+HTTP listeners bind to all interfaces by default and accept clients without built-in MCP authentication. Restrict access to a trusted network or an authenticated proxy, and grant backend accounts only the required permissions. See [deployment safeguards](docs/operations.md#deployment-safeguards).
 
-ICINGA_INSTANCES__STAGING__URL=https://staging.example:5665/v1
-ICINGA_INSTANCES__STAGING__USER=monitoring-reader
-ICINGA_INSTANCES__STAGING__PASSWORD=<read-password>
-ICINGA_INSTANCES__STAGING__WRITE_USER=monitoring-operator
-ICINGA_INSTANCES__STAGING__WRITE_PASSWORD=<write-password>
-```
-
-Named instances take precedence over the single-instance settings. Include the API path `/v1` in each URL. Certificate verification defaults to on for named instances. Set `CA_BUNDLE` when the server certificate uses a private CA. Use restricted Icinga API accounts for each role.
-
-Call `health_check` to discover instance names. For nested environment variables, names such as `PROD` become `prod`. Pass `instance` to Core tools when more than one is configured. A named instance is read-only unless both write credentials are set. The server exposes write tools only when at least one instance can use them. For named instances, acknowledgements and downtimes use the configured write account as their author.
-
-### Linuxfabrik plugin catalog
-
-Clone the [Linuxfabrik monitoring-plugins repository](https://github.com/Linuxfabrik/monitoring-plugins), then add to the server environment or `.env`:
-
-```ini
-ICINGA_PLUGIN_CATALOG_PATH=/path/to/monitoring-plugins/check-plugins
-```
-
-The server indexes plugin metadata and source at startup. Restart it to refresh the catalog after updating the checkout. `list_plugins` filters by platform or name, `explain_plugin` shows arguments, states and metrics, and `find_plugin_for_check_command` matches Director check commands. `read_plugin_source` returns the source or one top-level function without running the plugin. `catalog_info` reports the catalog size. These tools also work without any Core credentials.
-
-### Incident history
-
-Set `ICINGA_HISTORY__URL` to the Icinga Web 2 root URL and configure an account with access to the Icinga DB Web history view.
-
-```ini
-ICINGA_HISTORY__URL=https://monitoring.example/icingaweb2
-ICINGA_HISTORY__USER=<icinga-web-user>
-ICINGA_HISTORY__PASSWORD=<icinga-web-password>
-# ICINGA_HISTORY__CA_BUNDLE=/path/to/ca.pem
-```
-
-`get_history` takes an exact host, an optional service or event type, and optional ISO 8601 start and end times with timezones. It defaults to the last 24 hours and accepts a maximum window of 31 days. Set a shorter window if the result reports `has_more`. The history backend is independent of the Core instance settings.
-
-### Filter active problems
-
-`get_problems` can filter by `scope`, `severity`, exact `host_group`, `min_duration_minutes`, `acknowledged` and `in_downtime`. A severity filter selects services by default. Set `scope` to `both` to also include matching down hosts. Duration is time in the current state. The two counts include all matches after filtering, even if the response lists fewer entries.
-
-### Inspect Director deployments
-
-Pass the checksum returned by `deploy_pending_changes` to `verify_deployment`. It reports Director's status and independently compares the checksum with the configuration currently active in Icinga 2.
-
-`preview_pending_deployment` is optional. It lists audit entries newer than the activity checksum of the active configuration. It returns object names, actions, authors and timestamps. It also reports the total number of changes when the limit truncates the list.
-
-For MariaDB deployments, install [the activity reader](tools/director_activity_reader.py) on the Director database host. Use a dedicated SSH account named `director-mcp-audit` and a key restricted to the installed reader with the OpenSSH `restrict,command="…"` options. Give the matching MariaDB socket account only the following grant on the `director` database.
-
-```sql
-CREATE USER 'director-mcp-audit'@'localhost' IDENTIFIED VIA unix_socket;
-GRANT SELECT (id, checksum, object_type, object_name, action_name, author, change_time)
-    ON director.director_activity_log TO 'director-mcp-audit'@'localhost';
-```
-
-On the MCP host set `DIRECTOR_ACTIVITY__SSH_TARGET` to `director-mcp-audit@<host>` and set `DIRECTOR_ACTIVITY__IDENTITY_FILE` and `DIRECTOR_ACTIVITY__KNOWN_HOSTS` to the dedicated key and trusted host-key file. The reader uses `/usr/bin/mysql` with the local Unix socket. It queries metadata only. No configuration is rendered or deployed by the preview.
-
-## Integration
-
-Use the `/mcp` HTTP endpoints on ports `8092` for Core and `8093` for Director. Set `ICINGA_TRANSPORT=stdio` to run Core as an MCP client subprocess.
-
-## Troubleshooting
-
-- auth errors: check API user/password
-- timeout errors: tune request timeout settings
-
-## Security Notes
-
-- never commit `.env`
-- use least-privilege Icinga accounts
-
-## Attribution
-
-The Linuxfabrik catalog parser, loader and schema were adapted from [Linuxfabrik MCP Server for Icinga at `fd681ab`](https://github.com/linuxfabrik/mcp-server-icinga/tree/fd681abda91bec51c0a42fd4cf3122f3ad94df8d/src/mcp_server_icinga/plugin_catalog). See the [Unlicense](src/icinga2_mcp/plugin_catalog/LICENSE) and [copyright notice](src/icinga2_mcp/plugin_catalog/COPYRIGHT) for those files.
+The original project code and documentation are available under the [MIT License](LICENSE). The vendored Linuxfabrik catalog retains its [Unlicense text](src/icinga2_mcp/plugin_catalog/LICENSE) and [attribution notice](src/icinga2_mcp/plugin_catalog/COPYRIGHT). It was adapted from [Linuxfabrik MCP Server for Icinga at `fd681ab`](https://github.com/linuxfabrik/mcp-server-icinga/tree/fd681abda91bec51c0a42fd4cf3122f3ad94df8d/src/mcp_server_icinga/plugin_catalog). [REUSE.toml](REUSE.toml) records which license applies to each part of the repository.

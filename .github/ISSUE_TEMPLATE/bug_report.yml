@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible issue with an MCP server or its setup.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use the [security policy](https://github.com/DanielVd/icinga-mcp/blob/main/SECURITY.md) for vulnerabilities.
+        Redact credentials, private addresses and monitoring output before submitting.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Icinga 2 Core MCP
+        - Icinga Director MCP
+        - Installation or documentation
+        - More than one component
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Project version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the Python version, platform, upstream versions and MCP client if relevant.
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the tool name and sanitized arguments where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Actual and expected outcome
+      description: Include a sanitized error excerpt if it helps reproduce the issue.
+    validations:
+      required: true
