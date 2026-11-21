@@ -101,6 +101,22 @@ ICINGA_HISTORY__PASSWORD=<icinga-web-password>
 
 `get_problems` can filter by `scope`, `severity`, exact `host_group`, `min_duration_minutes`, `acknowledged` and `in_downtime`. A severity filter selects services by default. Set `scope` to `both` to also include matching down hosts. Duration is time in the current state. The two counts include all matches after filtering, even if the response lists fewer entries.
 
+### Inspect Director deployments
+
+Pass the checksum returned by `deploy_pending_changes` to `verify_deployment`. It reports Director's status and independently compares the checksum with the configuration currently active in Icinga 2.
+
+`preview_pending_deployment` is optional. It lists audit entries newer than the activity checksum of the active configuration. It returns object names, actions, authors and timestamps. It also reports the total number of changes when the limit truncates the list.
+
+For MariaDB deployments, install [the activity reader](tools/director_activity_reader.py) on the Director database host. Use a dedicated SSH account named `director-mcp-audit` and a key restricted to the installed reader with the OpenSSH `restrict,command="…"` options. Give the matching MariaDB socket account only the following grant on the `director` database.
+
+```sql
+CREATE USER 'director-mcp-audit'@'localhost' IDENTIFIED VIA unix_socket;
+GRANT SELECT (id, checksum, object_type, object_name, action_name, author, change_time)
+    ON director.director_activity_log TO 'director-mcp-audit'@'localhost';
+```
+
+On the MCP host set `DIRECTOR_ACTIVITY__SSH_TARGET` to `director-mcp-audit@<host>` and set `DIRECTOR_ACTIVITY__IDENTITY_FILE` and `DIRECTOR_ACTIVITY__KNOWN_HOSTS` to the dedicated key and trusted host-key file. The reader uses `/usr/bin/mysql` with the local Unix socket. It queries metadata only. No configuration is rendered or deployed by the preview.
+
 ## Integration
 
 Use the `/mcp` HTTP endpoints on ports `8092` for Core and `8093` for Director. Set `ICINGA_TRANSPORT=stdio` to run Core as an MCP client subprocess.
