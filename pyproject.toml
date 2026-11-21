@@ -1,13 +1,15 @@
 [project]
 name = "icinga-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "MCP servers for Icinga2 and Icinga Director"
 requires-python = ">=3.10"
+license = "MIT AND Unlicense"
+license-files = ["LICENSE", "src/icinga2_mcp/plugin_catalog/LICENSE", "src/icinga2_mcp/plugin_catalog/COPYRIGHT"]
 dependencies = [
-    "mcp>=1.27,<2",
+    "mcp>=1.30,<2",
     "requests>=2.31.0",
     "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
+    "pydantic-settings>=2.14.2",
 ]
 
 [project.scripts]
@@ -15,7 +17,7 @@ icinga2-mcp = "icinga2_mcp.server:main"
 director-mcp = "director_mcp.server:main"
 
 [build-system]
-requires = ["setuptools>=68.0"]
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.package-data]
