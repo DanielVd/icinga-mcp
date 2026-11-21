@@ -1,17 +1,21 @@
 """Icinga Director MCP Server."""
 
+import asyncio
 import json
 from functools import lru_cache
 from typing import Annotated
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
+
+from icinga_mcp.transport import run_transport
+
 from .client import DirectorClient
 from .deployment import (
     CHECKSUM_PATTERN, DeploymentPreview, DeploymentVerification, read_pending_activity,
 )
 from .settings import DirectorSettings
 
-mcp = FastMCP("director-mcp", host="0.0.0.0", port=8093)
+mcp = FastMCP("director-mcp", port=8093)
 
 
 def json_response(data: object) -> str:
@@ -57,7 +61,9 @@ def get_settings() -> DirectorSettings:
 @lru_cache(maxsize=1)
 def get_client() -> DirectorClient:
     settings = get_settings()
-    return DirectorClient(settings.base_url, settings.user, settings.password, settings.verify_ssl)
+    verify_ssl = str(settings.ca_bundle) if settings.ca_bundle else settings.verify_ssl
+    return DirectorClient(settings.base_url, settings.user, settings.password.get_secret_value(), verify_ssl,
+                          allow_writes=settings.allow_writes)
 
 
 def parse_json_field(field_name: str, raw_value: str) -> dict:
@@ -1300,10 +1306,21 @@ def merge_branch(branch_name: str = Field(description="Branch name")) -> str:
     return json_response(result)
 
 
+async def configure_tools(server: FastMCP, settings: DirectorSettings) -> None:
+    if not settings.allow_writes:
+        for tool in await server.list_tools():
+            if tool.name == "get_host_ticket" or not (
+                tool.name.startswith(("get_", "list_")) or tool.name == "verify_deployment"
+            ):
+                server.remove_tool(tool.name)
+    if settings.activity is not None:
+        server.add_tool(preview_pending_deployment)
+
+
 def main():
-    if get_settings().activity is not None:
-        mcp.add_tool(preview_pending_deployment)
-    mcp.run(transport="streamable-http")
+    settings = get_settings()
+    asyncio.run(configure_tools(mcp, settings))
+    run_transport(mcp, settings)
 
 
 if __name__ == "__main__":

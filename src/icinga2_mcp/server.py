@@ -11,12 +11,14 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult, TextContent
 from pydantic import BaseModel, Field
 
+from icinga_mcp.transport import run_transport
+
 from .client import Icinga2Client
 from .history import get_history
 from .plugin_tools import register_catalog_tools
 from .settings import Icinga2Settings
 
-mcp = FastMCP("icinga2-mcp", host="0.0.0.0", port=8092)
+mcp = FastMCP("icinga2-mcp", port=8092)
 
 
 HOST_LIST_ATTRS = [
@@ -136,13 +138,15 @@ def get_settings() -> Icinga2Settings:
 @lru_cache(maxsize=None)
 def get_client(instance: str | None = None, *, write: bool = False) -> Icinga2Client:
     settings = get_settings()
+    if write and not settings.allow_writes:
+        raise ValueError("Core write tools are disabled")
     if not settings.instances:
         if settings.host is None or settings.user is None or settings.password is None:
             raise ValueError("No Icinga 2 Core instance is configured")
         if instance not in (None, "default"):
             raise ValueError("The configured Core instance is named 'default'")
-        return Icinga2Client(settings.host, settings.user, settings.password.get_secret_value(),
-                             settings.verify_ssl)
+        verify_ssl = str(settings.ca_bundle) if settings.ca_bundle else settings.verify_ssl
+        return Icinga2Client(settings.host, settings.user, settings.password.get_secret_value(), verify_ssl)
 
     names = ", ".join(sorted(settings.instances))
     if instance is None:
@@ -167,10 +171,10 @@ def get_client(instance: str | None = None, *, write: bool = False) -> Icinga2Cl
 def health_check() -> str:
     """Report configured Core instances and plugin catalog availability without network calls."""
     settings = get_settings()
-    instances = {name: {"write_enabled": connection.write_user is not None}
+    instances = {name: {"write_enabled": settings.allow_writes and connection.write_user is not None}
                  for name, connection in sorted(settings.instances.items())}
     if not instances and settings.host:
-        instances["default"] = {"write_enabled": True}
+        instances["default"] = {"write_enabled": settings.allow_writes}
     try:
         package_version = version("icinga-mcp")
     except PackageNotFoundError:
@@ -544,7 +548,9 @@ async def configure_tools(server: FastMCP, settings: Icinga2Settings) -> None:
         for tool in await server.list_tools():
             if tool.name != "health_check":
                 server.remove_tool(tool.name)
-    elif settings.instances and all(instance.write_user is None for instance in settings.instances.values()):
+    elif not settings.allow_writes or (
+        settings.instances and all(instance.write_user is None for instance in settings.instances.values())
+    ):
         for name in WRITE_TOOLS:
             server.remove_tool(name)
 
@@ -556,10 +562,8 @@ async def configure_tools(server: FastMCP, settings: Icinga2Settings) -> None:
 
 def main():
     settings = get_settings()
-    mcp.settings.host = settings.mcp_host
-    mcp.settings.port = settings.mcp_port
     asyncio.run(configure_tools(mcp, settings))
-    mcp.run(transport=settings.transport)
+    run_transport(mcp, settings)
 
 
 if __name__ == "__main__":

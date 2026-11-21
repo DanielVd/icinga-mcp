@@ -24,6 +24,7 @@ class CoreIntegrationTests(unittest.TestCase):
 
     def test_named_instances_require_explicit_target_and_separate_write_credentials(self):
         env = {
+            "ICINGA_ALLOW_WRITES": "true",
             "ICINGA_INSTANCES__PROD__URL": "https://prod.example:5665/v1",
             "ICINGA_INSTANCES__PROD__USER": "reader",
             "ICINGA_INSTANCES__PROD__PASSWORD": "read-secret",

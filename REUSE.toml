@@ -11,6 +11,7 @@ path = [
     "pyproject.toml",
     "src/director_mcp/*.py",
     "src/icinga2_mcp/*.py",
+    "src/icinga_mcp/*.py",
     "tests/*.py",
     "tools/*.py",
 ]

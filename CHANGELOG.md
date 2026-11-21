@@ -4,6 +4,15 @@ Notable changes are recorded here. This changelog follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Security
+
+- Default to loopback listeners and verified TLS for legacy Core and Director backends. Require TLS, a bearer token and explicit allowed hosts for non-loopback listeners.
+- Make write tools and Director agent ticket generation opt-in. Reject backend redirects and omit raw response bodies from upstream errors.
+
+### Changed
+
+- Added stdio support for Director. Review the [migration and rollback instructions](docs/operations.md#upgrade-and-rollback) before upgrading from 0.2.x.
+
 ## [0.2.1] - 2026-11-21
 
 ### Added
