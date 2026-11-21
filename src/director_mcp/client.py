@@ -1,6 +1,7 @@
 """Icinga Director REST API client."""
 
 import os
+from http import HTTPStatus
 from typing import Optional
 
 import requests
@@ -57,6 +58,9 @@ class DirectorClient:
             response_text = getattr(getattr(exc, "response", None), "text", "") or str(exc)
             detail = response_text.strip().replace("\n", " ")[:500]
             raise RuntimeError(f"Director API request failed for {method} {path}: {status_code} {detail}") from exc
+
+        if method in {"POST", "PUT"} and resp.status_code == HTTPStatus.NOT_MODIFIED:
+            return {"changed": False, "status": "not_modified"}
 
         try:
             return resp.json()

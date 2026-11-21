@@ -14,7 +14,7 @@ from director_mcp.settings import DirectorSettings
 from icinga2_mcp.client import Icinga2Client
 from icinga2_mcp.server import HOST_LIST_ATTRS, get_client, json_response, list_hosts as icinga_list_hosts
 from icinga2_mcp.settings import Icinga2Settings
-from requests import HTTPError
+from requests import HTTPError, Response
 
 
 class PerfApiTests(unittest.TestCase):
@@ -114,6 +114,32 @@ class PerfApiTests(unittest.TestCase):
                 client._get("hosts")
 
         self.assertIn("invalid JSON", str(ctx.exception))
+
+    def test_director_no_change_writes_handle_empty_not_modified_responses(self) -> None:
+        client = DirectorClient("https://director.local/director", "web", "secret")
+        response = Response()
+        response.status_code = 304
+        payload = {"display_name": "Existing name"}
+
+        for method, update in (("POST", client.update_host), ("PUT", client.replace_host)):
+            with self.subTest(method=method):
+                with patch.object(client.session, "request", return_value=response) as request:
+                    self.assertEqual(update("host-1", payload), {"changed": False, "status": "not_modified"})
+                request.assert_called_once_with(
+                    method, "https://director.local/director/host",
+                    timeout=client.timeout, json=payload, params={"name": "host-1"},
+                )
+
+    def test_director_successful_write_keeps_the_upstream_object(self) -> None:
+        client = DirectorClient("https://director.local/director", "web", "secret")
+        response = Response()
+        response.status_code = 200
+        response._content = b'{"object_name":"host-1","display_name":"New name"}'
+
+        with patch.object(client.session, "request", return_value=response):
+            result = client.update_host("host-1", {"display_name": "New name"})
+
+        self.assertEqual(result, {"object_name": "host-1", "display_name": "New name"})
 
 
 if __name__ == "__main__":
