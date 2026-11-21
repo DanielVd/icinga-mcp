@@ -97,6 +97,10 @@ ICINGA_HISTORY__PASSWORD=<icinga-web-password>
 
 `get_history` takes an exact host, an optional service or event type, and optional ISO 8601 start and end times with timezones. It defaults to the last 24 hours and accepts a maximum window of 31 days. Set a shorter window if the result reports `has_more`. The history backend is independent of the Core instance settings.
 
+### Filter active problems
+
+`get_problems` can filter by `scope`, `severity`, exact `host_group`, `min_duration_minutes`, `acknowledged` and `in_downtime`. A severity filter selects services by default. Set `scope` to `both` to also include matching down hosts. Duration is time in the current state. The two counts include all matches after filtering, even if the response lists fewer entries.
+
 ## Integration
 
 Use the `/mcp` HTTP endpoints on ports `8092` for Core and `8093` for Director. Set `ICINGA_TRANSPORT=stdio` to run Core as an MCP client subprocess.
