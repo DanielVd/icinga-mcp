@@ -20,6 +20,8 @@ Run each HTTP server under a supervisor with its working directory set to the lo
 
 Credentials for the upstream services belong to the MCP servers. MCP calls use those credentials, so the backend audit identity may be a shared service account. Writes and Director agent ticket generation require opting in at the server. Limit the backend accounts to the operations they must perform. A client-side tool filter controls display. The listener, proxy and backend permissions enforce access.
 
+Avoid wildcard Core API roles. For named Core instances, give the read account only the object and status permissions required for discovery and queries. Create a separate write account with the specific action permissions required by the deployment. Give the Director account only the permissions needed for the enabled operations. A bearer token protects the listener while backend permissions limit the impact of a compromised server or backend credential.
+
 Monitoring data and upstream error details may reach the client and its logs. Review access to the endpoints and redact output before pasting it into tickets or public reports. See [TLS and credentials](configuration.md#core-and-director-settings) and the [security policy](../SECURITY.md).
 
 ## Read-only health checks
