@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 license = "MIT AND Unlicense"
 license-files = ["LICENSE", "src/icinga2_mcp/plugin_catalog/LICENSE", "src/icinga2_mcp/plugin_catalog/COPYRIGHT"]
 dependencies = [
-    "mcp>=1.30,<2",
+    "mcp>=1.30,<3",
     "requests>=2.31.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.14.2",
