@@ -44,7 +44,7 @@ class Icinga2Client:
         return self._request("POST", path, json=data)
 
     def _query_objects(self, path: str, params: dict) -> dict:
-        if "filter_vars" in params:
+        if params.keys() & {"filter", "host", "service"}:
             return self._request("POST", path, json=params, headers={"X-HTTP-Method-Override": "GET"})
         return self._get(path, params)
 
@@ -78,12 +78,12 @@ class Icinga2Client:
             params["filter"] = host_filter
         if attrs:
             params["attrs"] = attrs
-        result = self._get("objects/hosts", params)
+        result = self._query_objects("objects/hosts", params)
         return result.get("results", [])
 
     def get_host(self, name: str) -> dict:
         """Get single host by name."""
-        result = self._get("objects/hosts", {"host": name})
+        result = self._query_objects("objects/hosts", {"host": name})
         return self._single_result(result, f"Host {name!r}")
 
     def list_services(
@@ -107,7 +107,7 @@ class Icinga2Client:
 
     def get_service(self, host: str, service: str) -> dict:
         """Get single service by host and name."""
-        result = self._get("objects/services", {"service": f"{host}!{service}"})
+        result = self._query_objects("objects/services", {"service": f"{host}!{service}"})
         return self._single_result(result, f"Service {service!r} on {host!r}")
 
     @staticmethod
