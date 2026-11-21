@@ -2,9 +2,13 @@
 
 import json
 from functools import lru_cache
+from typing import Annotated
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 from .client import DirectorClient
+from .deployment import (
+    CHECKSUM_PATTERN, DeploymentPreview, DeploymentVerification, read_pending_activity,
+)
 from .settings import DirectorSettings
 
 mcp = FastMCP("director-mcp", host="0.0.0.0", port=8093)
@@ -916,6 +920,44 @@ def get_deployment_status(configs: str = Field(default="", description="Comma-se
     return json_response(result)
 
 
+@mcp.tool()
+def verify_deployment(
+    expected_checksum: Annotated[str, Field(pattern=CHECKSUM_PATTERN)],
+) -> DeploymentVerification:
+    """Check whether the configuration checksum returned by deploy is currently active in Icinga 2."""
+    expected = expected_checksum.lower()
+    result = get_client().get_deployment_status(configs=expected)
+    current = result.get("active_configuration") or {}
+    active_checksum = current.get("config")
+    active = isinstance(active_checksum, str) and active_checksum.lower() == expected
+    status = "active" if active else (result.get("configs") or {}).get(expected, "unknown")
+    return DeploymentVerification(expected_checksum=expected, active_checksum=active_checksum,
+                                  active_stage=current.get("stage_name"), active=active, status=status)
+
+
+def preview_pending_deployment(limit: Annotated[int, Field(ge=1, le=100)] = 30) -> DeploymentPreview:
+    """Preview pending Director activity since the active configuration without rendering or deploying.
+
+    Returns object names, actions and authors. Use the pending count to see if the list is truncated.
+    """
+    activity_settings = get_settings().activity
+    if activity_settings is None:
+        raise ValueError("Configure the Director activity reader to preview pending changes")
+    client = get_client()
+    current = client.get_deployment_status().get("active_configuration")
+    baseline = (current or {}).get("activity")
+    if current and not baseline:
+        raise RuntimeError("Director did not report the activity checksum of the active configuration")
+    snapshot = read_pending_activity(activity_settings, baseline, limit)
+    if current != client.get_deployment_status().get("active_configuration"):
+        raise RuntimeError("The active Director configuration changed during preview. Retry the preview.")
+    return DeploymentPreview(
+        active_config_checksum=(current or {}).get("config"), active_activity_checksum=baseline,
+        pending_count=snapshot.pending_count, changes=snapshot.changes,
+        has_more=snapshot.pending_count > len(snapshot.changes),
+    )
+
+
 # === ACTIVITY LOG ===
 
 @mcp.tool()
@@ -1259,7 +1301,8 @@ def merge_branch(branch_name: str = Field(description="Branch name")) -> str:
 
 
 def main():
-    get_settings()
+    if get_settings().activity is not None:
+        mcp.add_tool(preview_pending_deployment)
     mcp.run(transport="streamable-http")
 
 
