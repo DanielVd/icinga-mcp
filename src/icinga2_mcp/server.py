@@ -2,9 +2,10 @@
 
 import asyncio
 import json
+import time
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
-from typing import Annotated
+from typing import Annotated, Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult, TextContent
@@ -184,19 +185,37 @@ def health_check() -> str:
 
 
 @mcp.tool()
-def get_problems(instance: str | None = None,
-                 limit: int = 100) -> Annotated[CallToolResult, ProblemsSummary]:
+def get_problems(
+    instance: str | None = None, limit: int = 100,
+    scope: Literal["host", "service", "both"] | None = None,
+    severity: Literal["WARNING", "CRITICAL", "UNKNOWN"] | None = None,
+    host_group: Annotated[str, Field(min_length=1)] | None = None,
+    min_duration_minutes: Annotated[int, Field(ge=1, le=525600)] | None = None,
+    acknowledged: bool | None = None, in_downtime: bool | None = None,
+) -> Annotated[CallToolResult, ProblemsSummary]:
     """Report live Icinga 2 Core problems for both hosts and services.
 
-    Includes non-UP hosts and non-OK services, even if acknowledged or in downtime.
-    The limit applies separately to each list. Counts include all matching objects.
+    Filter by exact host group, time in the current state, acknowledgement or downtime.
+    A service severity implies service scope unless an explicit scope is supplied.
+    The limit applies separately to each list. Counts include all filtered matches.
     """
     if not 1 <= limit <= 500:
         raise ValueError("limit must be between 1 and 500")
+    scope = scope or ("service" if severity else "both")
+    if scope == "host" and severity:
+        raise ValueError("Service severity requires service or both scope")
+    params = {"filter_vars": {"problem_group": host_group}} if host_group else {}
+    cutoff = int(time.time()) - 60 * min_duration_minutes if min_duration_minutes else None
     client = get_client(instance)
-    hosts = [summarize_host(row) for row in client.list_hosts("host.state != 0", attrs=HOST_LIST_ATTRS)]
-    services = [summarize_service(row) for row in
-                client.list_services(service_filter="service.state != 0", attrs=SERVICE_LIST_ATTRS)]
+    hosts = []
+    services = []
+    if scope in {"host", "both"}:
+        expression = problem_filter("host", None, host_group, cutoff, acknowledged, in_downtime)
+        hosts = [summarize_host(row) for row in client.list_hosts(expression, attrs=HOST_LIST_ATTRS, **params)]
+    if scope in {"service", "both"}:
+        expression = problem_filter("service", severity, host_group, cutoff, acknowledged, in_downtime)
+        services = [summarize_service(row) for row in
+                    client.list_services(service_filter=expression, attrs=SERVICE_LIST_ATTRS, **params)]
     hosts.sort(key=lambda row: row["name"] or "")
     services.sort(key=lambda row: (row["host_name"] or "", row["name"] or ""))
     for row in hosts[:limit] + services[:limit]:
@@ -210,6 +229,25 @@ def get_problems(instance: str | None = None,
         content=[TextContent(type="text", text=json_response(summary))],
         structuredContent=summary,
     )
+
+
+def problem_filter(object_type: str, severity: str | None, host_group: str | None,
+                   cutoff: int | None, acknowledged: bool | None, in_downtime: bool | None) -> str:
+    expression = f"{object_type}.state != 0"
+    if severity:
+        expression = with_state_filter(object_type, "", severity, SERVICE_STATES)
+    conditions = [expression]
+    if host_group:
+        conditions.append("problem_group in host.groups")
+    if cutoff is not None:
+        conditions.extend([f"{object_type}.last_state_change > 0", f"{object_type}.last_state_change <= {cutoff}"])
+    if acknowledged is not None:
+        operator = "!=" if acknowledged else "=="
+        conditions.append(f"{object_type}.acknowledgement {operator} 0")
+    if in_downtime is not None:
+        operator = ">" if in_downtime else "=="
+        conditions.append(f"{object_type}.downtime_depth {operator} 0")
+    return " && ".join(conditions)
 
 
 @mcp.tool()

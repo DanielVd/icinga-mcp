@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from director_mcp.server import mcp as director_mcp
 from icinga2_mcp.client import Icinga2Client
-from icinga2_mcp.server import get_client, list_hosts, mcp
+from icinga2_mcp.server import get_client, get_problems, list_hosts, mcp
 from icinga2_mcp.settings import Icinga2Settings
 
 
@@ -83,6 +83,23 @@ class CoreIntegrationTests(unittest.TestCase):
             with self.subTest(tool=name):
                 self.assertIn("Icinga 2 Core", core_tools[name].description)
                 self.assertIn("definition", director_tools[name].description)
+
+    def test_problem_filters_bind_group_and_select_only_services_for_severity(self):
+        with patch("icinga2_mcp.server.get_client") as get_mock_client:
+            client = get_mock_client.return_value
+            client.list_services.return_value = []
+            with patch("icinga2_mcp.server.time.time", return_value=2000):
+                result = get_problems(severity="CRITICAL", host_group='EU "edge"',
+                                      min_duration_minutes=15, acknowledged=False, in_downtime=False)
+
+        client.list_hosts.assert_not_called()
+        query = client.list_services.call_args.kwargs
+        self.assertEqual(query["filter_vars"], {"problem_group": 'EU "edge"'})
+        self.assertEqual(query["service_filter"], " && ".join([
+            "service.state == 2", "problem_group in host.groups", "service.last_state_change > 0",
+            "service.last_state_change <= 1100", "service.acknowledgement == 0", "service.downtime_depth == 0",
+        ]))
+        self.assertEqual(result.structuredContent["host_problem_count"], 0)
 
     def test_named_actions_use_exact_targets_and_configured_writer(self):
         client = Icinga2Client("icinga.example", "writer", "secret", action_author="writer")

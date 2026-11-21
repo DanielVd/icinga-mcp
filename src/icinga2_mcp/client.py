@@ -71,11 +71,14 @@ class Icinga2Client:
         """Get Icinga2 status information."""
         return self._get(f"status/{type_name}")
 
-    def list_hosts(self, host_filter: Optional[str] = None, attrs: Optional[list[str]] = None) -> list:
+    def list_hosts(self, host_filter: Optional[str] = None, attrs: Optional[list[str]] = None,
+                   *, filter_vars: dict | None = None) -> list:
         """List all hosts with optional filter."""
         params = {}
         if host_filter:
             params["filter"] = host_filter
+            if filter_vars:
+                params["filter_vars"] = filter_vars
         if attrs:
             params["attrs"] = attrs
         result = self._query_objects("objects/hosts", params)
@@ -91,17 +94,21 @@ class Icinga2Client:
         host: Optional[str] = None,
         service_filter: Optional[str] = None,
         attrs: Optional[list[str]] = None,
+        *,
+        filter_vars: dict | None = None,
     ) -> list:
         """List all services, optionally filtered by host."""
         params = {}
         if service_filter:
             params["filter"] = service_filter
+            if filter_vars:
+                params["filter_vars"] = filter_vars
         if attrs:
             params["attrs"] = attrs
         if host:
             host_constraint = "service.host_name == target_host"
             params["filter"] = f"({service_filter}) && {host_constraint}" if service_filter else host_constraint
-            params["filter_vars"] = {"target_host": host}
+            params["filter_vars"] = {**(filter_vars or {}), "target_host": host}
         result = self._query_objects("objects/services", params)
         return result.get("results", [])
 
