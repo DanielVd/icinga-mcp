@@ -4,9 +4,11 @@ import asyncio
 import json
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
+from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import Field
+from mcp.types import CallToolResult, TextContent
+from pydantic import BaseModel, Field
 
 from .client import Icinga2Client
 from .plugin_tools import register_catalog_tools
@@ -67,6 +69,13 @@ WRITE_TOOLS = (
     "add_downtime", "remove_downtime", "add_acknowledgement",
     "remove_acknowledgement", "reschedule_check", "process_check_result",
 )
+
+
+class ProblemsSummary(BaseModel):
+    hosts: list[dict]
+    services: list[dict]
+    host_problem_count: int
+    service_problem_count: int
 
 
 def summarize_host(row: dict) -> dict:
@@ -173,10 +182,12 @@ def health_check() -> str:
 
 
 @mcp.tool()
-def get_problems(instance: str | None = None, limit: int = 100) -> str:
-    """Summarize non-UP hosts and non-OK services, including acknowledged and silenced problems.
+def get_problems(instance: str | None = None,
+                 limit: int = 100) -> Annotated[CallToolResult, ProblemsSummary]:
+    """Report live Icinga 2 Core problems for both hosts and services.
 
-    The limit applies separately to each list. Counts include all matches.
+    Includes non-UP hosts and non-OK services, even if acknowledged or in downtime.
+    The limit applies separately to each list. Counts include all matching objects.
     """
     if not 1 <= limit <= 500:
         raise ValueError("limit must be between 1 and 500")
@@ -189,10 +200,14 @@ def get_problems(instance: str | None = None, limit: int = 100) -> str:
     for row in hosts[:limit] + services[:limit]:
         row["output"] = row["output"][:500]
         row.pop("performance_data")
-    return json_response({
+    summary = {
         "hosts": hosts[:limit], "services": services[:limit],
         "host_problem_count": len(hosts), "service_problem_count": len(services),
-    })
+    }
+    return CallToolResult(
+        content=[TextContent(type="text", text=json_response(summary))],
+        structuredContent=summary,
+    )
 
 
 @mcp.tool()
@@ -215,7 +230,7 @@ def get_icinga_application_status(instance: str | None = None) -> str:
 def list_hosts(host_filter: str = Field(default="", description="Optional Icinga2 filter expression"),
                instance: str | None = None, state: str | None = None,
                name_contains: str | None = None) -> str:
-    """List monitored hosts. Filter by Icinga expression, state (UP/DOWN) or name substring."""
+    """List live Icinga 2 Core hosts and their current UP or DOWN state. Filter by state, name or Icinga expression."""
     client = get_client(instance)
     host_filter = with_state_filter("host", host_filter, state, HOST_STATES)
     hosts = client.list_hosts(host_filter, attrs=HOST_LIST_ATTRS)
@@ -225,7 +240,7 @@ def list_hosts(host_filter: str = Field(default="", description="Optional Icinga
 @mcp.tool()
 def get_host(host_name: str = Field(description="Host name"),
              instance: str | None = None) -> str:
-    """Get detailed information about a single host."""
+    """Get a monitored host's current runtime state and latest check result from Icinga 2 Core."""
     client = get_client(instance)
     host = client.get_host(host_name)
     return json_response(host)
@@ -236,7 +251,10 @@ def list_services(host: str = Field(default="", description="Filter by host name
                   service_filter: str = Field(default="", description="Optional Icinga2 filter expression"),
                   instance: str | None = None, state: str | None = None,
                   name_contains: str | None = None) -> str:
-    """List monitored services. Filter by host, Icinga expression, state or name substring."""
+    """List live Icinga 2 Core services and their current OK, WARNING, CRITICAL or UNKNOWN state.
+
+    Filter by host, state, name substring or Icinga expression. Use get_problems for a combined problem summary.
+    """
     client = get_client(instance)
     host_param = host if host else None
     filter_param = with_state_filter("service", service_filter, state, SERVICE_STATES)
@@ -266,7 +284,7 @@ def matches_name(row: dict, name_contains: str | None) -> bool:
 def get_service(host_name: str = Field(description="Host name"),
                 service_name: str = Field(description="Service name"),
                 instance: str | None = None) -> str:
-    """Get detailed information about a single service."""
+    """Get a monitored service's current runtime state and latest check result from Icinga 2 Core."""
     client = get_client(instance)
     service = client.get_service(host_name, service_name)
     return json_response(service)

@@ -69,7 +69,10 @@ def parse_json_field(field_name: str, raw_value: str) -> dict:
 def list_hosts(limit: int = Field(default=0, description="Max returned hosts, 0 = all"),
                offset: int = Field(default=0, description="Skip first N hosts"),
                summary: bool = Field(default=False, description="Return compact host summary")) -> str:
-    """List hosts configured in Icinga Director. Use limit/offset for large inventories."""
+    """List host definitions stored in Icinga Director. Use limit and offset for large inventories.
+
+    Use Icinga 2 Core list_hosts for current UP or DOWN state.
+    """
     client = get_client()
     hosts = client.list_hosts()
     page = paginate(hosts, limit, offset)
@@ -88,7 +91,7 @@ def list_hosts(limit: int = Field(default=0, description="Max returned hosts, 0 
 def get_host(host_name: str = Field(description="Host name"),
              resolved: bool = Field(default=False, description="Resolve inherited properties"),
              with_services: bool = Field(default=False, description="Include attached services")) -> str:
-    """Get detailed information about a single host from Director."""
+    """Get one host definition from Icinga Director, optionally including inherited configuration and services."""
     client = get_client()
     host = client.get_host(host_name, resolved, with_services)
     return json_response(host)
@@ -164,7 +167,10 @@ def get_host_ticket(host_name: str = Field(description="Host name")) -> str:
 def list_services(limit: int = Field(default=0, description="Max returned services, 0 = all"),
                   offset: int = Field(default=0, description="Skip first N services"),
                   summary: bool = Field(default=False, description="Return compact service summary")) -> str:
-    """List services configured in Icinga Director. Use limit/offset for large inventories."""
+    """List service definitions stored in Icinga Director. Use limit and offset for large inventories.
+
+    Use Icinga 2 Core list_services or get_problems for current check states.
+    """
     client = get_client()
     services = client.list_services()
     page = paginate(services, limit, offset)
@@ -182,7 +188,7 @@ def list_services(limit: int = Field(default=0, description="Max returned servic
 @mcp.tool()
 def get_service(service_name: str = Field(description="Service name"),
                 host_name: str = Field(default="", description="Host name (for host-specific services)")) -> str:
-    """Get detailed information about a single service from Director."""
+    """Get one service definition from Icinga Director, optionally scoped to its configured host."""
     client = get_client()
     host_param = host_name if host_name else None
     service = client.get_service(service_name, host_param)

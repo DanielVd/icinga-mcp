@@ -12,8 +12,9 @@ from mcp.client.stdio import stdio_client
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from director_mcp.server import mcp as director_mcp
 from icinga2_mcp.client import Icinga2Client
-from icinga2_mcp.server import get_client, get_problems, list_hosts
+from icinga2_mcp.server import get_client, list_hosts, mcp
 from icinga2_mcp.settings import Icinga2Settings
 
 
@@ -59,7 +60,13 @@ class CoreIntegrationTests(unittest.TestCase):
             client.list_services.return_value = [
                 {"attrs": {"name": "disk", "state": 2, "last_check_result": {"output": "x" * 600}}}
             ]
-            result = json.loads(get_problems("prod", limit=1))
+            response = asyncio.run(mcp.call_tool("get_problems", {"instance": "prod", "limit": 1}))
+            result = response.structuredContent
+            self.assertEqual(json.loads(response.content[0].text), result)
+            tool = next(tool for tool in asyncio.run(mcp.list_tools()) if tool.name == "get_problems")
+            self.assertEqual(set(tool.outputSchema["required"]), {
+                "hosts", "services", "host_problem_count", "service_problem_count",
+            })
             self.assertEqual(client.list_hosts.call_args.args, ("host.state != 0",))
             self.assertEqual(client.list_services.call_args.kwargs["service_filter"], "service.state != 0")
             self.assertEqual(result["host_problem_count"], 2)
@@ -68,6 +75,14 @@ class CoreIntegrationTests(unittest.TestCase):
             self.assertEqual(len(result["services"][0]["output"]), 500)
             self.assertEqual(len(json.loads(list_hosts("", state="down", name_contains="A-HOST"))), 1)
             self.assertEqual(client.list_hosts.call_args.args, ("host.state == 1",))
+
+    def test_discovery_distinguishes_runtime_tools_from_director_definitions(self):
+        core_tools = {tool.name: tool for tool in asyncio.run(mcp.list_tools())}
+        director_tools = {tool.name: tool for tool in asyncio.run(director_mcp.list_tools())}
+        for name in ("list_hosts", "list_services", "get_host", "get_service"):
+            with self.subTest(tool=name):
+                self.assertIn("Icinga 2 Core", core_tools[name].description)
+                self.assertIn("definition", director_tools[name].description)
 
     def test_named_actions_use_exact_targets_and_configured_writer(self):
         client = Icinga2Client("icinga.example", "writer", "secret", action_author="writer")
@@ -80,6 +95,7 @@ class CoreIntegrationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Specify either"):
                 client.remove_downtime("downtime-1", host="web")
             post.assert_called_once()
+
     def test_object_queries_send_filters_in_json_without_changing_unfiltered_reads(self):
         client = Icinga2Client("icinga.example", "reader", "secret")
         with patch.object(client, "_request", return_value={"results": []}) as request:
