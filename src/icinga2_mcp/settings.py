@@ -32,6 +32,27 @@ class CoreInstance(BaseModel):
         return self
 
 
+class HistorySettings(BaseModel):
+    model_config = ConfigDict(hide_input_in_errors=True)
+
+    url: AnyHttpUrl
+    user: str = Field(min_length=1)
+    password: SecretStr
+    verify_ssl: bool = True
+    ca_bundle: FilePath | None = None
+    timeout: float = Field(default=15, gt=0, le=120)
+
+    @model_validator(mode="after")
+    def validate_connection(self):
+        if self.url.scheme != "https" or self.url.username or self.url.password or self.url.query or self.url.fragment:
+            raise ValueError("The Icinga Web URL must use HTTPS and have no credentials, query or fragment")
+        if not self.password.get_secret_value():
+            raise ValueError("The Icinga Web password cannot be empty")
+        if self.ca_bundle is not None and not self.verify_ssl:
+            raise ValueError("An Icinga Web CA bundle requires TLS verification")
+        return self
+
+
 class Icinga2Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="ICINGA_",
@@ -47,6 +68,7 @@ class Icinga2Settings(BaseSettings):
     password: SecretStr | None = None
     verify_ssl: bool = False
     instances: dict[str, CoreInstance] = Field(default_factory=dict)
+    history: HistorySettings | None = None
     plugin_catalog_path: DirectoryPath | None = None
     transport: Literal["streamable-http", "stdio"] = "streamable-http"
     mcp_host: str = "0.0.0.0"
@@ -60,6 +82,6 @@ class Icinga2Settings(BaseSettings):
         elif any(value is not None for value in (self.host, self.user, self.password)):
             if not self.host or not self.user or self.password is None or not self.password.get_secret_value():
                 raise ValueError("Configure ICINGA_HOST, ICINGA_USER and ICINGA_PASSWORD together")
-        elif self.plugin_catalog_path is None:
-            raise ValueError("Configure a Core instance or ICINGA_PLUGIN_CATALOG_PATH")
+        elif self.plugin_catalog_path is None and self.history is None:
+            raise ValueError("Configure a Core instance, Icinga DB Web history, or a plugin catalog")
         return self

@@ -84,6 +84,19 @@ ICINGA_PLUGIN_CATALOG_PATH=/path/to/monitoring-plugins/check-plugins
 
 The server indexes plugin metadata and source at startup. Restart it to refresh the catalog after updating the checkout. `list_plugins` filters by platform or name, `explain_plugin` shows arguments, states and metrics, and `find_plugin_for_check_command` matches Director check commands. `read_plugin_source` returns the source or one top-level function without running the plugin. `catalog_info` reports the catalog size. These tools also work without any Core credentials.
 
+### Incident history
+
+Set `ICINGA_HISTORY__URL` to the Icinga Web 2 root URL and configure an account with access to the Icinga DB Web history view.
+
+```ini
+ICINGA_HISTORY__URL=https://monitoring.example/icingaweb2
+ICINGA_HISTORY__USER=<icinga-web-user>
+ICINGA_HISTORY__PASSWORD=<icinga-web-password>
+# ICINGA_HISTORY__CA_BUNDLE=/path/to/ca.pem
+```
+
+`get_history` takes an exact host, an optional service or event type, and optional ISO 8601 start and end times with timezones. It defaults to the last 24 hours and accepts a maximum window of 31 days. Set a shorter window if the result reports `has_more`. The history backend is independent of the Core instance settings.
+
 ## Integration
 
 Use the `/mcp` HTTP endpoints on ports `8092` for Core and `8093` for Director. Set `ICINGA_TRANSPORT=stdio` to run Core as an MCP client subprocess.

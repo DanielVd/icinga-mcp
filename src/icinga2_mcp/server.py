@@ -11,6 +11,7 @@ from mcp.types import CallToolResult, TextContent
 from pydantic import BaseModel, Field
 
 from .client import Icinga2Client
+from .history import get_history
 from .plugin_tools import register_catalog_tools
 from .settings import Icinga2Settings
 
@@ -178,6 +179,7 @@ def health_check() -> str:
         "version": package_version,
         "instances": instances,
         "plugin_catalog_configured": settings.plugin_catalog_path is not None,
+        "history_configured": settings.history is not None,
     })
 
 
@@ -510,6 +512,8 @@ async def configure_tools(server: FastMCP, settings: Icinga2Settings) -> None:
 
     if settings.plugin_catalog_path is not None:
         register_catalog_tools(server, settings.plugin_catalog_path)
+    if settings.history is not None:
+        server.add_tool(get_history)
 
 
 def main():
