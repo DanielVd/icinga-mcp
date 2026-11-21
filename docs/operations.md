@@ -24,6 +24,12 @@ Avoid wildcard Core API roles. For named Core instances, give the read account o
 
 Monitoring data and upstream error details may reach the client and its logs. Review access to the endpoints and redact output before pasting it into tickets or public reports. See [TLS and credentials](configuration.md#core-and-director-settings) and the [security policy](../SECURITY.md).
 
+### Temporary exception for a wildcard Core account
+
+The maintainer approved publishing v0.3.0 while one existing deployment still uses a Core API account with the wildcard permission (`*`). This is a temporary exception for that backend account. Listener authentication and TLS verification continue to apply. If the backend credential is compromised, the wildcard permits access to the entire Core API, including configuration and monitoring state changes.
+
+Replace the wildcard account with a scoped read account and, where needed, a separate account for specific actions such as acknowledgements and rescheduling. Configure them as a [named Core instance](configuration.md#named-core-instances). Verify the required reads and validate permitted writes in staging before switching the deployment. Revoke the wildcard credential after the switch succeeds.
+
 ## Read-only health checks
 
 - Core `health_check` reports configuration and optional backend availability. Call `get_problems` to also check connectivity and read permissions on the Icinga API.
