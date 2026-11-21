@@ -80,9 +80,32 @@ class CoreIntegrationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Specify either"):
                 client.remove_downtime("downtime-1", host="web")
             post.assert_called_once()
-        with patch.object(client, "_get", return_value={"results": [{"name": "web!disk"}]}) as get:
-            self.assertEqual(client.get_service("web", "disk")["name"], "web!disk")
-            get.assert_called_once_with("objects/services", {"service": "web!disk"})
+    def test_object_queries_send_filters_in_json_without_changing_unfiltered_reads(self):
+        client = Icinga2Client("icinga.example", "reader", "secret")
+        with patch.object(client, "_request", return_value={"results": []}) as request:
+            client.list_hosts("host.state != 0", attrs=["state"])
+            request.assert_called_once_with(
+                "POST", "objects/hosts",
+                json={"filter": "host.state != 0", "attrs": ["state"]},
+                headers={"X-HTTP-Method-Override": "GET"},
+            )
+            request.reset_mock()
+            client.list_services(attrs=["state"])
+            request.assert_called_once_with("GET", "objects/services", params={"attrs": ["state"]})
+
+    def test_exact_object_queries_send_names_with_spaces_in_json(self):
+        client = Icinga2Client("icinga.example", "reader", "secret")
+        headers = {"X-HTTP-Method-Override": "GET"}
+        with patch.object(client, "_request", return_value={"results": [{"name": "web!Disk Usage"}]}) as request:
+            self.assertEqual(client.get_service("web", "Disk Usage")["name"], "web!Disk Usage")
+            request.assert_called_once_with(
+                "POST", "objects/services", json={"service": "web!Disk Usage"}, headers=headers,
+            )
+        with patch.object(client, "_request", return_value={"results": [{"name": "web server"}]}) as request:
+            self.assertEqual(client.get_host("web server")["name"], "web server")
+            request.assert_called_once_with(
+                "POST", "objects/hosts", json={"host": "web server"}, headers=headers,
+            )
 
 
 class CatalogMcpTests(unittest.TestCase):
