@@ -4,12 +4,13 @@
 
 - `src/icinga2_mcp` contains the FastMCP runtime monitoring server, the Icinga 2 REST client and optional Icinga DB Web history and Linuxfabrik plugin catalog.
 - `src/director_mcp` contains the FastMCP Director server, its REST client and deployment inspection.
+- `src/icinga_mcp` contains the shared HTTP listener configuration and bearer token enforcement.
 - `tools/director_activity_reader.py` reads Director audit metadata through a restricted SSH command and local MariaDB socket.
 - `tests` contains `unittest` client and MCP tests. The Python package uses setuptools and declares its dependencies in [pyproject.toml](pyproject.toml).
 
 ## Development
 
-Use the repository virtual environment. See [CONTRIBUTING.md](CONTRIBUTING.md#development) for setup.
+Use an isolated development environment. See [CONTRIBUTING.md](CONTRIBUTING.md#development) for setup. Production services should use their own environment and configuration directory.
 
 ```sh
 .venv/bin/python -m unittest discover -s tests -v

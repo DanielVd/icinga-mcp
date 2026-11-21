@@ -4,6 +4,8 @@ Notable changes are recorded here. This changelog follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-21
+
 ### Security
 
 - Default to loopback listeners and verified TLS for legacy Core and Director backends. Require TLS, a bearer token and explicit allowed hosts for non-loopback listeners.
@@ -61,7 +63,8 @@ Notable changes are recorded here. This changelog follows [Keep a Changelog](htt
 
 - Initial GitHub release with MCP servers for Icinga 2 and Icinga Director.
 
-[Unreleased]: https://github.com/DanielVd/icinga-mcp/compare/v0.2.1...main
+[Unreleased]: https://github.com/DanielVd/icinga-mcp/compare/v0.3.0...main
+[0.3.0]: https://github.com/DanielVd/icinga-mcp/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/DanielVd/icinga-mcp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DanielVd/icinga-mcp/releases/tag/v0.2.0
 [0.1.1]: https://github.com/DanielVd/icinga-mcp/releases/tag/v0.1.1
