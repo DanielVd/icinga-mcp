@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest a change to the servers, tools or documentation.
+body:
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: Describe what you are trying to accomplish and the current limitation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_change
+    attributes:
+      label: Proposed change
+      description: Include any expected effect on existing clients, configuration or permissions.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Share other approaches you considered, if relevant.
