@@ -1,9 +1,9 @@
 """Settings for Icinga2 MCP."""
 
-from typing import Literal
-
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, DirectoryPath, Field, FilePath, SecretStr, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
+
+from icinga_mcp.transport import TransportSettings
 
 
 class CoreInstance(BaseModel):
@@ -53,7 +53,7 @@ class HistorySettings(BaseModel):
         return self
 
 
-class Icinga2Settings(BaseSettings):
+class Icinga2Settings(TransportSettings):
     model_config = SettingsConfigDict(
         env_prefix="ICINGA_",
         env_file=".env",
@@ -66,16 +66,17 @@ class Icinga2Settings(BaseSettings):
     host: str | None = None
     user: str | None = None
     password: SecretStr | None = None
-    verify_ssl: bool = False
+    verify_ssl: bool = True
+    ca_bundle: FilePath | None = None
     instances: dict[str, CoreInstance] = Field(default_factory=dict)
     history: HistorySettings | None = None
     plugin_catalog_path: DirectoryPath | None = None
-    transport: Literal["streamable-http", "stdio"] = "streamable-http"
-    mcp_host: str = "0.0.0.0"
     mcp_port: int = Field(default=8092, ge=1, le=65535)
 
     @model_validator(mode="after")
     def validate_backends(self):
+        if self.ca_bundle is not None and not self.verify_ssl:
+            raise ValueError("A legacy Core CA bundle requires TLS verification")
         if self.instances:
             if any(not name or name.strip() != name for name in self.instances):
                 raise ValueError("Core instance names must be non-empty and have no surrounding spaces")

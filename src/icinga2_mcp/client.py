@@ -16,7 +16,7 @@ DEFAULT_POOL_MAXSIZE = int(os.getenv("ICINGA_POOL_MAXSIZE", "50"))
 class Icinga2Client:
     """Client for Icinga2 REST API."""
 
-    def __init__(self, host: str, user: str, password: str, verify_ssl: bool | str = False, *,
+    def __init__(self, host: str, user: str, password: str, verify_ssl: bool | str = True, *,
                  base_url: str | None = None, action_author: str | None = None):
         self.base_url = base_url.rstrip("/") if base_url else f"https://{host}:5665/v1"
         self.auth = (user, password)
@@ -50,13 +50,14 @@ class Icinga2Client:
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
         try:
-            resp = self.session.request(method, f"{self.base_url}/{path}", timeout=self.timeout, **kwargs)
+            resp = self.session.request(method, f"{self.base_url}/{path}", timeout=self.timeout,
+                                        allow_redirects=False, **kwargs)
             resp.raise_for_status()
         except RequestException as exc:
-            status_code = getattr(getattr(exc, "response", None), "status_code", "request-error")
-            response_text = getattr(getattr(exc, "response", None), "text", "") or str(exc)
-            detail = response_text.strip().replace("\n", " ")[:500]
-            raise RuntimeError(f"Icinga2 API request failed for {method} {path}: {status_code} {detail}") from exc
+            status = exc.response.status_code if exc.response is not None else type(exc).__name__
+            raise RuntimeError(f"Icinga2 API request failed for {method} {path}: {status}") from None
+        if resp.is_redirect:
+            raise RuntimeError(f"Icinga2 API request returned an unexpected redirect: {resp.status_code}")
 
         try:
             return resp.json()

@@ -58,6 +58,6 @@ The [release page](https://github.com/DanielVd/icinga-mcp/releases/latest) also 
 
 ## Security and licensing
 
-HTTP listeners bind to all interfaces by default and accept clients without built-in MCP authentication. Restrict access to a trusted network or an authenticated proxy, and grant backend accounts only the required permissions. See [deployment safeguards](docs/operations.md#deployment-safeguards).
+HTTP listeners bind to loopback by default. Non-loopback listeners require TLS, a bearer token and explicit allowed hosts. Backend certificate verification defaults to enabled. Write tools require an explicit opt-in and the corresponding backend permissions. See [deployment safeguards](docs/operations.md#deployment-safeguards).
 
 The original project code and documentation are available under the [MIT License](LICENSE). The vendored Linuxfabrik catalog retains its [Unlicense text](src/icinga2_mcp/plugin_catalog/LICENSE) and [attribution notice](src/icinga2_mcp/plugin_catalog/COPYRIGHT). It was adapted from [Linuxfabrik MCP Server for Icinga at `fd681ab`](https://github.com/linuxfabrik/mcp-server-icinga/tree/fd681abda91bec51c0a42fd4cf3122f3ad94df8d/src/mcp_server_icinga/plugin_catalog). [REUSE.toml](REUSE.toml) records which license applies to each part of the repository.

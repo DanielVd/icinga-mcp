@@ -17,11 +17,13 @@ DEFAULT_POOL_MAXSIZE = int(os.getenv("DIRECTOR_POOL_MAXSIZE", "50"))
 class DirectorClient:
     """Client for Icinga Director REST API."""
 
-    def __init__(self, base_url: str, user: str, password: str, verify_ssl: bool = False):
+    def __init__(self, base_url: str, user: str, password: str, verify_ssl: bool | str = True, *,
+                 allow_writes: bool = True):
         self.base_url = base_url.rstrip("/")
         self.user = user
         self.password = password
         self.verify_ssl = verify_ssl
+        self.allow_writes = allow_writes
         self.timeout = DEFAULT_TIMEOUT
         self.session = requests.Session()
         self.session.auth = (user, password)
@@ -50,17 +52,20 @@ class DirectorClient:
         return self._request("DELETE", path, params=params)
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
+        if not self.allow_writes and (method != "GET" or path == "host/ticket"):
+            raise RuntimeError("Director write tools and ticket generation are disabled")
         try:
-            resp = self.session.request(method, f"{self.base_url}/{path}", timeout=self.timeout, **kwargs)
+            resp = self.session.request(method, f"{self.base_url}/{path}", timeout=self.timeout,
+                                        allow_redirects=False, **kwargs)
             resp.raise_for_status()
         except RequestException as exc:
-            status_code = getattr(getattr(exc, "response", None), "status_code", "request-error")
-            response_text = getattr(getattr(exc, "response", None), "text", "") or str(exc)
-            detail = response_text.strip().replace("\n", " ")[:500]
-            raise RuntimeError(f"Director API request failed for {method} {path}: {status_code} {detail}") from exc
+            status = exc.response.status_code if exc.response is not None else type(exc).__name__
+            raise RuntimeError(f"Director API request failed for {method} {path}: {status}") from None
 
         if method in {"POST", "PUT"} and resp.status_code == HTTPStatus.NOT_MODIFIED:
             return {"changed": False, "status": "not_modified"}
+        if resp.is_redirect:
+            raise RuntimeError(f"Director API request returned an unexpected redirect: {resp.status_code}")
 
         try:
             return resp.json()

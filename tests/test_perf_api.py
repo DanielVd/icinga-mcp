@@ -108,6 +108,7 @@ class PerfApiTests(unittest.TestCase):
         client = DirectorClient("https://director.local/director", "web", "secret")
         fake_response = Mock()
         fake_response.raise_for_status.return_value = None
+        fake_response.is_redirect = False
         fake_response.json.side_effect = ValueError("bad json")
         with patch.object(client.session, "request", return_value=fake_response):
             with self.assertRaises(RuntimeError) as ctx:
@@ -127,7 +128,7 @@ class PerfApiTests(unittest.TestCase):
                     self.assertEqual(update("host-1", payload), {"changed": False, "status": "not_modified"})
                 request.assert_called_once_with(
                     method, "https://director.local/director/host",
-                    timeout=client.timeout, json=payload, params={"name": "host-1"},
+                    timeout=client.timeout, allow_redirects=False, json=payload, params={"name": "host-1"},
                 )
 
     def test_director_successful_write_keeps_the_upstream_object(self) -> None:

@@ -16,9 +16,9 @@ Icinga and Director retain monitoring state and configuration. The MCP processes
 
 ## Deployment safeguards
 
-Run each HTTP server under a supervisor with its working directory set to the location of your `.env`. The default ports are 8092 for Core and 8093 for Director. Both listeners bind to all interfaces and lack built-in MCP client authentication and TLS. Protect them with a trusted network boundary or authenticated reverse proxy. Core also supports `ICINGA_MCP_HOST=127.0.0.1` for a local reverse proxy and `ICINGA_TRANSPORT=stdio` for clients that launch a subprocess.
+Run each HTTP server under a supervisor with its working directory set to the location of your `.env`. Both servers bind to loopback by default. Use an authenticated HTTPS reverse proxy for remote clients when the proxy can reach the private loopback listener. For a proxy on a separate host, bind to the intended interface and configure listener TLS and a bearer token. Have the proxy verify the upstream certificate and forward the client's Authorization header. Preserve HTTP streaming and the MCP session headers. Both servers support stdio for clients that launch a subprocess.
 
-Credentials for the upstream services belong to the MCP servers. MCP calls use those credentials, so the backend audit identity may be a shared service account. A client's tool-name filter controls tool visibility in that client. Apply access controls at the listener or proxy and enforce operation permissions with the backend accounts.
+Credentials for the upstream services belong to the MCP servers. MCP calls use those credentials, so the backend audit identity may be a shared service account. Writes and Director agent ticket generation require opting in at the server. Limit the backend accounts to the operations they must perform. A client-side tool filter controls display. The listener, proxy and backend permissions enforce access.
 
 Monitoring data and upstream error details may reach the client and its logs. Review access to the endpoints and redact output before pasting it into tickets or public reports. See [TLS and credentials](configuration.md#core-and-director-settings) and the [security policy](../SECURITY.md).
 
@@ -51,6 +51,8 @@ After an authorized deployment, pass the checksum returned by `deploy_pending_ch
 Record the running version and the location of its configuration. Read the [changelog](../CHANGELOG.md), install the chosen release in the service environment, and restart the affected MCP process. Repeat the read-only health checks. To roll back, restore the previous package and compatible settings, then restart it. MCP upgrades leave Icinga and Director managed separately. Back up those systems and their databases through your existing Icinga procedures. Keep local configuration and SSH key backups outside Git.
 
 Build a fresh virtual environment for security upgrades so that dependencies are resolved again. Installing only the new wheel in an existing environment can leave older transitive packages in place. Run `python -m pip check` in the replacement environment and audit it before switching the service. See [release verification](releasing.md#supply-chain-records).
+
+When upgrading from 0.2.x to 0.3.x, inventory existing clients before changing the bind address. Configure TLS trust for each backend, then set the proxy route or client credentials before switching remote endpoints. Enable write tools explicitly only where required. Keep the old environment and matching proxy and client configuration until both servers pass the read-only checks through their regular route. Roll back the service, proxy and client configuration together if any part of the route fails.
 
 ## Troubleshooting
 
